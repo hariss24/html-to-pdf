@@ -56,8 +56,12 @@ PAGE = r"""<!DOCTYPE html>
   .split { display: flex; flex: 1 1 auto; min-height: 0; gap: 6px; }
   .pane { display: flex; flex-direction: column; min-height: 0; min-width: 0; border: 1px solid #2a2f3a; border-radius: 8px; overflow: hidden; }
   .pane-title { background: #14181f; color: #9aa0a6; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; padding: 6px 12px; border-bottom: 1px solid #2a2f3a; display: flex; justify-content: space-between; align-items: center; }
-  .pane-title .actions-mini button { background: #2a2f3a; color: #e6e6e6; border: 0; border-radius: 4px; padding: 3px 8px; font-size: 11px; cursor: pointer; margin-left: 4px; }
-  .pane-title .actions-mini button:hover { background: #353b48; }
+  .pane-title .actions-mini button, .pane-title .actions-mini select { background: #2a2f3a; color: #e6e6e6; border: 0; border-radius: 4px; padding: 3px 8px; font-size: 11px; cursor: pointer; margin-left: 4px; }
+  .pane-title .actions-mini button:hover, .pane-title .actions-mini select:hover { background: #353b48; }
+  .tabs { display: flex; gap: 2px; }
+  .tab { background: transparent; color: #9aa0a6; border: 0; padding: 4px 12px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; cursor: pointer; border-radius: 4px; font-weight: 600; }
+  .tab:hover { color: #e6e6e6; }
+  .tab.active { color: #4f8cff; background: #2a2f3a; }
   #editor { flex: 1; min-height: 0; }
   #preview { flex: 1; border: 0; background: white; }
   .splitter { width: 6px; cursor: col-resize; background: transparent; }
@@ -118,8 +122,17 @@ PAGE = r"""<!DOCTYPE html>
   <div class="split" id="split">
     <div class="pane editor-pane" id="editor-pane">
       <div class="pane-title">
-        <span>Editeur HTML</span>
+        <div class="tabs">
+          <button class="tab active" type="button" data-tab="html">HTML</button>
+          <button class="tab" type="button" data-tab="css">CSS</button>
+        </div>
         <div class="actions-mini">
+          <select id="template-select" title="Charger un template">
+            <option value="">Templates...</option>
+            <option value="sobre">Sobre</option>
+            <option value="moderne">Moderne</option>
+            <option value="minimal">Minimal</option>
+          </select>
           <button type="button" id="snippet-page">@page A4</button>
           <button type="button" id="snippet-pagebreak">page-break</button>
           <button type="button" id="format-btn" title="Formater (Alt+Shift+F)">Format</button>
@@ -183,27 +196,442 @@ PAGE = r"""<!DOCTYPE html>
 const $ = (id) => document.getElementById(id);
 const setStatus = (msg, cls) => { const s = $('status'); s.textContent = msg; s.className = cls || ''; };
 
-const STORAGE_KEY = 'html-to-pdf:draft';
-const STARTER = `<!DOCTYPE html>
-<html lang="fr">
-<head>
-<meta charset="utf-8">
-<title>Mon CV</title>
-<style>
-  @page { size: A4; margin: 15mm; }
-  body { font-family: -apple-system, sans-serif; line-height: 1.4; color: #222; }
-  h1 { color: #1a73e8; margin: 0 0 4px; }
-  .sub { color: #666; }
-</style>
-</head>
-<body>
+const STORAGE_KEY_HTML = 'html-to-pdf:draft:html';
+const STORAGE_KEY_CSS = 'html-to-pdf:draft:css';
+const STORAGE_KEY_TAB = 'html-to-pdf:draft:tab';
+
+const TEMPLATES = {
+  sobre: {
+    html: `<div class="resume-template-1 resume-template-renderer">
+
+  <section class="resume-template-renderer-section personal-data">
+    <h2 class="resume-template-renderer-section__title">Informations personnelles</h2>
+    <div class="personal-data__photo" style="background:#eee;"></div>
+    <div class="personal-data__title-row">
+      <span class="personal-data__name">Prenom Nom</span><span class="personal-data__desired-job-title">Titre du poste</span>
+    </div>
+    <div class="personal-data__contact-row">
+      Ville, Pays &middot; email@example.com &middot; +33 6 00 00 00 00 &middot; linkedin.com/in/profil
+    </div>
+  </section>
+
+  <section class="resume-template-renderer-section summary-objective">
+    <h2 class="resume-template-renderer-section__title summary-objective__title">A propos</h2>
+    <div class="summary-objective__content">
+      Bref resume professionnel : 2 a 3 phrases qui presentent votre profil, votre experience et ce que vous recherchez.
+    </div>
+  </section>
+
+  <section class="resume-template-renderer-section entry-list">
+    <h2 class="resume-template-renderer-section__title">Experience</h2>
+    <div class="entry-list__item">
+      <span class="entry-list__title">Poste occupe</span>
+      <span class="entry-list__date">Jan 2024 - Present</span>
+      <div class="entry-list__company-row">
+        <span class="entry-list__subtitle">Entreprise</span><span class="entry-list__location">Ville</span>
+      </div>
+      <div class="entry-list__description">
+        <ul>
+          <li>Realisation marquante avec metrique chiffree.</li>
+          <li>Autre realisation pertinente pour le poste vise.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="entry-list__item">
+      <span class="entry-list__title">Poste precedent</span>
+      <span class="entry-list__date">2022 - 2023</span>
+      <div class="entry-list__company-row">
+        <span class="entry-list__subtitle">Autre entreprise</span><span class="entry-list__location">Ville</span>
+      </div>
+      <div class="entry-list__description">
+        <ul>
+          <li>Description courte de la mission.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="resume-template-renderer-section entry-list">
+    <h2 class="resume-template-renderer-section__title">Formation</h2>
+    <div class="entry-list__item">
+      <span class="entry-list__title">Diplome</span>
+      <span class="entry-list__date">2020 - 2022</span>
+      <div class="entry-list__company-row">
+        <span class="entry-list__subtitle">Etablissement</span><span class="entry-list__location">Ville</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="resume-template-renderer-section plain-list">
+    <h2 class="resume-template-renderer-section__title">Competences</h2>
+    <div class="plain-list__items">
+      <span class="plain-list__item">Competence 1</span>
+      <span class="plain-list__item">Competence 2</span>
+      <span class="plain-list__item">Competence 3</span>
+      <span class="plain-list__item">Competence 4</span>
+      <span class="plain-list__item">Competence 5</span>
+      <span class="plain-list__item">Competence 6</span>
+    </div>
+  </section>
+
+  <section class="resume-template-renderer-section languages">
+    <h2 class="resume-template-renderer-section__title">Langues</h2>
+    <div class="languages__items">
+      <div class="languages__item">
+        <span class="languages__name">Francais</span>
+        <span class="languages__description">Natif</span>
+      </div>
+      <div class="languages__item">
+        <span class="languages__name">Anglais</span>
+        <span class="languages__description">Courant</span>
+      </div>
+    </div>
+  </section>
+
+</div>`,
+    css: `@page { size: A4; margin: 0; }
+
+:root { --resume-template-customization-color: #c9c6c1; }
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  font-family: "Helvetica", "Arial", sans-serif;
+  color: #555;
+  font-size: 9pt;
+  line-height: 1.35;
+}
+
+ul { list-style: none; }
+a { color: inherit; text-decoration: underline; }
+
+.resume-template-1.resume-template-renderer {
+  padding: 24px 50px 20px;
+}
+
+.resume-template-1.resume-template-renderer .resume-template-renderer-section {
+  border-top: 2px solid var(--resume-template-customization-color);
+  padding-top: 7px;
+}
+
+.resume-template-1.resume-template-renderer .resume-template-renderer-section .resume-template-renderer-section__title {
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  font-size: 8.5pt;
+  letter-spacing: 0.5px;
+  color: #555;
+  font-weight: 500;
+}
+
+.resume-template-1.resume-template-renderer .resume-template-renderer-section.personal-data {
+  border-top: none;
+  padding-top: 0;
+}
+
+.resume-template-1.resume-template-renderer .resume-template-renderer-section.personal-data .resume-template-renderer-section__title {
+  display: none;
+}
+
+.resume-template-1.resume-template-renderer .personal-data {
+  display: block;
+  margin-bottom: 10px;
+  min-height: 80px;
+  padding-left: calc(25% + 0px);
+  position: relative;
+}
+
+.resume-template-1.resume-template-renderer .personal-data .personal-data__photo {
+  aspect-ratio: 1;
+  left: 0;
+  position: absolute;
+  width: 80px;
+  top: 0;
+}
+
+.resume-template-1.resume-template-renderer .personal-data .personal-data__photo img {
+  width: 100%;
+  height: 100%;
+  border-radius: 6px;
+  object-fit: cover;
+  display: block;
+}
+
+.resume-template-1.resume-template-renderer .personal-data .personal-data__title-row {
+  margin-bottom: 4px;
+}
+
+.resume-template-1.resume-template-renderer .personal-data .personal-data__name,
+.resume-template-1.resume-template-renderer .personal-data .personal-data__desired-job-title {
+  color: #000;
+  font-size: 14pt;
+  font-weight: 500;
+}
+
+.resume-template-1.resume-template-renderer .personal-data .personal-data__desired-job-title::before {
+  content: ", ";
+}
+
+.resume-template-1.resume-template-renderer .personal-data .personal-data__contact-row {
+  font-size: 9.5pt;
+  color: #555;
+}
+
+.resume-template-1.resume-template-renderer .summary-objective {
+  display: flex;
+  margin-bottom: 6px;
+}
+
+.resume-template-1.resume-template-renderer .summary-objective .summary-objective__title {
+  flex-shrink: 0;
+  width: 25%;
+  margin-bottom: 0;
+}
+
+.resume-template-1.resume-template-renderer .summary-objective .summary-objective__content {
+  flex: 1;
+}
+
+.resume-template-1.resume-template-renderer .entry-list .entry-list__item {
+  display: block;
+  padding-bottom: 7px;
+}
+
+.resume-template-1.resume-template-renderer .entry-list .entry-list__item .entry-list__title {
+  color: #000;
+  font-weight: 500;
+  display: inline;
+}
+
+.resume-template-1.resume-template-renderer .entry-list .entry-list__item .entry-list__date {
+  float: right;
+  color: #555;
+  font-weight: 400;
+}
+
+.resume-template-1.resume-template-renderer .entry-list .entry-list__item .entry-list__subtitle {
+  color: #000;
+  font-weight: 600;
+  display: inline;
+}
+
+.resume-template-1.resume-template-renderer .entry-list .entry-list__item .entry-list__location {
+  color: #787673;
+  font-weight: 400;
+  display: inline;
+  margin-left: 4px;
+}
+
+.resume-template-1.resume-template-renderer .entry-list .entry-list__item .entry-list__company-row {
+  display: block;
+  margin-top: 1px;
+  clear: both;
+}
+
+.resume-template-1.resume-template-renderer .entry-list .entry-list__item .entry-list__description {
+  margin-top: 3px;
+  clear: both;
+}
+
+.resume-template-1.resume-template-renderer .entry-list .entry-list__item .entry-list__description ul {
+  list-style-type: disc;
+  padding-left: 14px;
+}
+
+.resume-template-1.resume-template-renderer .entry-list .entry-list__item .entry-list__description li {
+  margin-bottom: 1px;
+}
+
+.resume-template-1.resume-template-renderer .entry-list .avoid-page-break .entry-list__item {
+  padding-bottom: 0;
+}
+
+.resume-template-1.resume-template-renderer .plain-list {
+  display: flex;
+  margin-bottom: 6px;
+}
+
+.resume-template-1.resume-template-renderer .plain-list .resume-template-renderer-section__title {
+  flex-shrink: 0;
+  width: 25%;
+  margin-bottom: 0;
+}
+
+.resume-template-1.resume-template-renderer .plain-list .plain-list__items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 0;
+  flex: 1;
+}
+
+.resume-template-1.resume-template-renderer .plain-list .plain-list__items .plain-list__item {
+  color: #000;
+  font-weight: 500;
+  padding-right: 12px;
+  width: 33.33%;
+}
+
+.resume-template-1.resume-template-renderer .languages {
+  display: flex;
+  margin-bottom: 6px;
+}
+
+.resume-template-1.resume-template-renderer .languages .resume-template-renderer-section__title {
+  flex-shrink: 0;
+  width: 25%;
+  margin-bottom: 0;
+}
+
+.resume-template-1.resume-template-renderer .languages .languages__items {
+  display: flex;
+  flex-grow: 1;
+  flex-wrap: wrap;
+  gap: 6px 0;
+}
+
+.resume-template-1.resume-template-renderer .languages .languages__items .languages__item {
+  display: flex;
+  flex-wrap: wrap;
+  padding-right: 12px;
+  width: 33.33%;
+}
+
+.resume-template-1.resume-template-renderer .languages .languages__items .languages__item .languages__name {
+  color: #000;
+  font-weight: 500;
+  margin-right: 4px;
+}
+
+.resume-template-1.resume-template-renderer .languages .languages__items .languages__item .languages__description {
+  color: #787673;
+}
+
+.resume-template-1.resume-template-renderer .languages .languages__items .languages__item .languages__description::before {
+  content: "(";
+}
+
+.resume-template-1.resume-template-renderer .languages .languages__items .languages__item .languages__description::after {
+  content: ")";
+}`,
+  },
+  moderne: {
+    html: `<header class="cv-head">
   <h1>Prenom Nom</h1>
-  <p class="sub">Titre / Poste recherche</p>
-  <p>Decrivez-vous ici...</p>
-</body>
-</html>`;
+  <p class="role">Titre du poste recherche</p>
+  <p class="contact">email@example.com &middot; +33 6 00 00 00 00 &middot; linkedin.com/in/profil &middot; Ville</p>
+</header>
+
+<section class="cv-section">
+  <h2>A propos</h2>
+  <p>Bref resume professionnel : 2 a 3 phrases qui presentent votre profil et ce que vous recherchez.</p>
+</section>
+
+<section class="cv-section">
+  <h2>Experience</h2>
+  <div class="job">
+    <div class="job-head">
+      <span><strong>Poste occupe</strong> &middot; Entreprise</span>
+      <span class="date">Jan 2024 - Present</span>
+    </div>
+    <ul>
+      <li>Realisation marquante avec metrique chiffree.</li>
+      <li>Autre realisation pertinente pour le poste vise.</li>
+    </ul>
+  </div>
+  <div class="job">
+    <div class="job-head">
+      <span><strong>Poste precedent</strong> &middot; Autre entreprise</span>
+      <span class="date">2022 - 2023</span>
+    </div>
+    <ul>
+      <li>Description courte de la mission.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="cv-section">
+  <h2>Formation</h2>
+  <div class="job">
+    <div class="job-head">
+      <span><strong>Diplome</strong> &middot; Etablissement</span>
+      <span class="date">2020 - 2022</span>
+    </div>
+  </div>
+</section>
+
+<section class="cv-section">
+  <h2>Competences</h2>
+  <ul class="skills">
+    <li>JavaScript</li><li>TypeScript</li><li>Python</li><li>React</li><li>Node.js</li><li>SQL</li>
+  </ul>
+</section>`,
+    css: `@page { size: A4; margin: 18mm 16mm; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, "Segoe UI", Roboto, sans-serif; color: #1e293b; line-height: 1.55; font-size: 10.5pt; }
+h1 { color: #2563eb; font-size: 22pt; font-weight: 700; margin-bottom: 4px; }
+.role { color: #475569; font-size: 11.5pt; margin-bottom: 6px; }
+.contact { color: #64748b; font-size: 9.5pt; }
+.cv-head { padding-bottom: 12px; border-bottom: 2px solid #2563eb; margin-bottom: 14px; }
+.cv-section { margin-bottom: 14px; }
+.cv-section h2 { color: #2563eb; font-size: 12pt; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.6px; }
+.cv-section p { margin-bottom: 6px; }
+.job { margin-bottom: 10px; }
+.job-head { display: flex; justify-content: space-between; margin-bottom: 4px; }
+.date { color: #94a3b8; font-weight: 400; font-size: 9.5pt; }
+.job ul { list-style: disc; padding-left: 18px; }
+.job ul li { margin-bottom: 2px; }
+ul.skills { list-style: none; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+ul.skills li { background: #eff6ff; color: #2563eb; padding: 2px 10px; border-radius: 12px; font-size: 9.5pt; font-weight: 500; }`,
+  },
+  minimal: {
+    html: `<h1>Prenom Nom</h1>
+<p class="meta">Titre du poste &middot; email@example.com &middot; +33 6 00 00 00 00</p>
+
+<h2>Experience</h2>
+<p><strong>Poste occupe</strong>, Entreprise &mdash; Jan 2024 - Present</p>
+<p>Description courte de ce que vous avez accompli.</p>
+
+<p><strong>Poste precedent</strong>, Autre entreprise &mdash; 2022 - 2023</p>
+<p>Autre description courte.</p>
+
+<h2>Formation</h2>
+<p><strong>Diplome</strong>, Etablissement &mdash; 2020 - 2022</p>
+
+<h2>Competences</h2>
+<p>Competence 1, Competence 2, Competence 3, Competence 4, Competence 5.</p>`,
+    css: `@page { size: A4; margin: 22mm; }
+body { font: 11pt/1.6 Georgia, "Times New Roman", serif; color: #222; }
+h1 { font-size: 22pt; font-weight: normal; margin: 0 0 4px; }
+h2 { font-size: 13pt; font-weight: normal; margin: 18px 0 6px; border-bottom: 1px solid #ccc; padding-bottom: 2px; }
+p { margin: 0 0 6px; }
+.meta { color: #666; margin-bottom: 18px; }
+strong { font-weight: 600; }`,
+  },
+};
 
 let editor;
+let htmlModel;
+let cssModel;
+let activeTab = 'html';
+
+function mergedHtml() {
+  const html = htmlModel ? htmlModel.getValue() : '';
+  const css = cssModel ? cssModel.getValue() : '';
+  if (!css.trim()) return html;
+  if (/<\/head>/i.test(html)) {
+    return html.replace(/<\/head>/i, `<style>\n${css}\n</style>\n</head>`);
+  }
+  if (/<html[\s>]/i.test(html)) {
+    return html.replace(/<html([^>]*)>/i, `<html$1>\n<head><meta charset="utf-8"><style>\n${css}\n</style></head>`);
+  }
+  return `<!DOCTYPE html>\n<html lang="fr">\n<head>\n<meta charset="utf-8">\n<style>\n${css}\n</style>\n</head>\n<body>\n${html}\n</body>\n</html>`;
+}
+
+function switchTab(tab) {
+  activeTab = tab;
+  document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  if (editor) editor.setModel(tab === 'css' ? cssModel : htmlModel);
+  try { localStorage.setItem(STORAGE_KEY_TAB, tab); } catch (_) {}
+}
 
 function slug(s) {
   if (!s) return '';
@@ -233,18 +661,22 @@ let previewTimer;
 function schedulePreview() {
   clearTimeout(previewTimer);
   previewTimer = setTimeout(() => {
-    const value = editor ? editor.getValue() : '';
-    $('preview').srcdoc = value;
-    try { localStorage.setItem(STORAGE_KEY, value); } catch (_) { /* quota */ }
+    $('preview').srcdoc = mergedHtml();
   }, 400);
 }
 
 require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs' } });
 require(['vs/editor/editor.main'], function () {
-  const initial = localStorage.getItem(STORAGE_KEY) || STARTER;
+  const storedHtml = localStorage.getItem(STORAGE_KEY_HTML);
+  const storedCss = localStorage.getItem(STORAGE_KEY_CSS);
+  const wantTab = localStorage.getItem(STORAGE_KEY_TAB) || 'html';
+  const fallback = TEMPLATES.sobre;
+
+  htmlModel = monaco.editor.createModel(storedHtml !== null ? storedHtml : fallback.html, 'html');
+  cssModel  = monaco.editor.createModel(storedCss  !== null ? storedCss  : fallback.css,  'css');
+
   editor = monaco.editor.create($('editor'), {
-    value: initial,
-    language: 'html',
+    model: htmlModel,
     theme: 'vs-dark',
     automaticLayout: true,
     minimap: { enabled: false },
@@ -253,13 +685,39 @@ require(['vs/editor/editor.main'], function () {
     tabSize: 2,
     scrollBeyondLastLine: false,
   });
-  editor.onDidChangeModelContent(schedulePreview);
-  $('preview').srcdoc = editor.getValue();
+
+  htmlModel.onDidChangeContent(() => {
+    try { localStorage.setItem(STORAGE_KEY_HTML, htmlModel.getValue()); } catch (_) {}
+    schedulePreview();
+  });
+  cssModel.onDidChangeContent(() => {
+    try { localStorage.setItem(STORAGE_KEY_CSS, cssModel.getValue()); } catch (_) {}
+    schedulePreview();
+  });
+
+  document.querySelectorAll('.tab').forEach(btn => {
+    btn.onclick = () => switchTab(btn.dataset.tab);
+  });
+  switchTab(wantTab);
+
+  $('preview').srcdoc = mergedHtml();
 
   $('format-btn').onclick = () => editor.getAction('editor.action.formatDocument').run();
-  $('snippet-page').onclick = () => insertSnippet('@page { size: A4; margin: 15mm; }\n');
-  $('snippet-pagebreak').onclick = () => insertSnippet('<div style="page-break-after: always;"></div>\n');
-  $('refresh-preview').onclick = () => { $('preview').srcdoc = editor.getValue(); };
+  $('snippet-page').onclick = () => { switchTab('css'); insertSnippet('@page { size: A4; margin: 15mm; }\n'); };
+  $('snippet-pagebreak').onclick = () => { switchTab('html'); insertSnippet('<div style="page-break-after: always;"></div>\n'); };
+  $('refresh-preview').onclick = () => { $('preview').srcdoc = mergedHtml(); };
+
+  $('template-select').onchange = (e) => {
+    const key = e.target.value;
+    e.target.value = '';
+    if (!key) return;
+    const tpl = TEMPLATES[key];
+    if (!tpl) return;
+    const dirty = htmlModel.getValue().trim() || cssModel.getValue().trim();
+    if (dirty && !confirm(`Charger le template "${key}" et ecraser le contenu actuel ?`)) return;
+    htmlModel.setValue(tpl.html);
+    cssModel.setValue(tpl.css);
+  };
 
   const params = new URLSearchParams(location.search);
   const loadId = params.get('load');
@@ -271,7 +729,9 @@ require(['vs/editor/editor.main'], function () {
       $('role').value = entry.role || '';
       $('notes').value = entry.notes || '';
       return fetch(`/api/history/${encodeURIComponent(loadId)}/html`).then(r => r.text()).then(html => {
-        editor.setValue(html);
+        htmlModel.setValue(html);
+        cssModel.setValue('');
+        switchTab('html');
       });
     }).then(refreshFilenamePreview);
   }
@@ -285,14 +745,15 @@ function insertSnippet(text) {
 }
 
 $('clear').onclick = () => {
-  if (editor) editor.setValue('');
+  if (htmlModel) htmlModel.setValue('');
+  if (cssModel) cssModel.setValue('');
   ['company', 'role', 'filename', 'notes'].forEach(id => $(id).value = '');
   setStatus(''); refreshFilenamePreview();
-  try { localStorage.removeItem(STORAGE_KEY); } catch (_) {}
+  try { localStorage.removeItem(STORAGE_KEY_HTML); localStorage.removeItem(STORAGE_KEY_CSS); } catch (_) {}
 };
 
 $('go').onclick = async () => {
-  const html = editor ? editor.getValue() : '';
+  const html = mergedHtml();
   if (!html.trim()) { setStatus("Editez du HTML d'abord.", 'err'); return; }
   const btn = $('go'); btn.disabled = true; btn.textContent = 'Conversion...';
   setStatus('Generation du PDF...', '');
