@@ -141,6 +141,7 @@ def save_document(
     role: str = "",
     notes: str = "",
     custom_filename: str = "",
+    job_desc: str = "",
 ) -> dict:
     ensure_archive_dir()
     when = datetime.now()
@@ -166,6 +167,7 @@ def save_document(
         "company": company,
         "role": role,
         "notes": notes,
+        "job_desc": job_desc,
         "filename": pdf_path.name,
         "pdf_path": str(pdf_path),
         "html_path": str(html_path),

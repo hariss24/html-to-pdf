@@ -104,6 +104,40 @@ PAGE = r"""<!DOCTYPE html>
   #status { font-size: 13px; color: #9aa0a6; }
   #status.ok { color: #5dd39e; }
   #status.err { color: #ff6b6b; }
+  
+  /* Modal IA */
+  .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.7); align-items: center; justify-content: center; backdrop-filter: blur(4px); }
+  .modal-content { background-color: #181b21; padding: 32px; border: 1px solid #333842; border-radius: 12px; width: 680px; max-width: 95%; color: #e6e6e6; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+  .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+  .modal-header h2 { margin: 0; font-size: 22px; color: #fff; display: flex; align-items: center; gap: 8px; }
+  .close-modal { color: #9aa0a6; font-size: 28px; font-weight: bold; cursor: pointer; transition: color 0.2s; }
+  .close-modal:hover { color: #fff; }
+  .ia-step-title { font-size: 14px; font-weight: 600; color: #e6e6e6; margin-bottom: 8px; margin-top: 20px; display: block; }
+  .modal-content textarea { width: 100%; background: #111418; color: #fff; border: 1px solid #333842; border-radius: 8px; padding: 12px; font-size: 13px; line-height: 1.5; resize: vertical; transition: border-color 0.2s; }
+  .modal-content textarea:focus { outline: none; border-color: #4f8cff; }
+  .ia-options { display: flex; justify-content: space-between; align-items: center; margin-top: 16px; background: #111418; padding: 16px; border-radius: 8px; border: 1px solid #333842; }
+  .ia-options select { background: #1b1f27; color: #e6e6e6; border: 1px solid #333842; padding: 6px 12px; border-radius: 6px; font-size: 13px; outline: none; }
+  .ia-options select:focus { border-color: #4f8cff; }
+  .btn-copier { display: block; width: 100%; padding: 14px; font-size: 15px; font-weight: 600; text-align: center; background: linear-gradient(135deg, #4f8cff, #2563eb); color: white; border: none; border-radius: 8px; margin-top: 24px; cursor: pointer; transition: transform 0.1s, box-shadow 0.2s; }
+  .btn-copier:hover { box-shadow: 0 4px 12px rgba(79, 140, 255, 0.4); transform: translateY(-1px); }
+  .btn-copier:active { transform: translateY(1px); }
+
+  /* Responsive Mobile */
+  @media (max-width: 768px) {
+    html, body { height: auto; overflow: visible; }
+    .wrap { height: auto; min-height: 100vh; padding: 12px; }
+    .topbar { flex-direction: column; gap: 12px; align-items: flex-start; }
+    .meta { grid-template-columns: 1fr; gap: 12px; }
+    .split { flex-direction: column; flex: none; height: 800px; } /* Hauteur fixe pour split sur mobile */
+    .editor-pane, .preview-pane { flex: 1 1 50% !important; min-height: 300px; width: 100% !important; }
+    .splitter { width: 100%; height: 12px; cursor: row-resize; background: #1b1f27; }
+    
+    .modal-content { padding: 20px; width: 100%; border-radius: 8px; }
+    .modal-header { flex-direction: column; align-items: flex-start; gap: 12px; }
+    .close-modal { position: absolute; top: 16px; right: 16px; }
+    .ia-options { flex-direction: column; align-items: flex-start; gap: 12px; }
+    .ia-options select { width: 100%; }
+  }
 </style>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/editor/editor.main.css" />
 </head>
@@ -111,7 +145,10 @@ PAGE = r"""<!DOCTYPE html>
 <div class="wrap">
   <div class="topbar">
     <h1>HTML/CSS -> PDF</h1>
-    <div><a href="/history">Historique &rsaquo;</a></div>
+    <div style="display: flex; align-items: center; gap: 12px;">
+      <button id="btn-ia" class="ghost" style="color: #f5a623; border: 1px solid #f5a623; padding: 6px 12px;">✨ Assistant IA</button>
+      <a href="/history">Historique &rsaquo;</a>
+    </div>
   </div>
 
   <div class="meta">
@@ -159,6 +196,8 @@ PAGE = r"""<!DOCTYPE html>
       <div class="pane-title">
         <span>Prévisualisation</span>
         <div class="actions-mini">
+          <input type="file" id="photo-upload" accept="image/*" style="display: none;">
+          <button type="button" id="btn-photo" title="Insérer une image dans le HTML">📸 Insérer ma photo</button>
           <button type="button" id="refresh-preview">Rafraichir</button>
         </div>
       </div>
@@ -205,6 +244,45 @@ PAGE = r"""<!DOCTYPE html>
   </div>
 </div>
 
+<!-- Modal IA -->
+<div id="modal-ia" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2><span style="font-size: 24px;">✨</span> Assistant IA</h2>
+      <span class="close-modal" id="close-modal">&times;</span>
+    </div>
+    <div class="modal-body">
+      <p style="margin-top:0; font-size: 14px; line-height: 1.5; color: #a1a7b0; margin-bottom: 24px;">
+        Générez le prompt parfait pour ChatGPT ou Claude. L'IA rédigera votre CV en gardant le bon formatage HTML, prêt à être converti en PDF.
+      </p>
+      
+      <span class="ia-step-title">1. Offre d'emploi ciblé :</span>
+      <textarea id="ia-job-desc" placeholder="Collez la description du poste ici. Plus il y a de détails, mieux l'IA pourra adapter votre CV..." style="height: 100px;"></textarea>
+      
+      <div class="ia-options">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <span class="ia-step-title" style="margin: 0;">2. Paramètres :</span>
+          <select id="ia-template">
+            <option value="sobre">Design : Sobre</option>
+            <option value="moderne">Design : Moderne</option>
+            <option value="minimal">Design : Minimal</option>
+          </select>
+        </div>
+        <label style="font-size:14px; cursor: pointer; display: flex; align-items: center; gap: 8px; color: #e6e6e6;">
+          <input type="checkbox" id="ia-cover-letter" style="width: 16px; height: 16px;"> 
+          Inclure une lettre de motivation
+        </label>
+      </div>
+
+      <span class="ia-step-title">3. Prompt généré (à copier) :</span>
+      <p style="font-size: 12px; color: #9aa0a6; margin-bottom: 8px;">Donnez ce texte à l'IA, en lui fournissant votre ancien CV en pièce jointe.</p>
+      <textarea id="ia-prompt" readonly style="height: 180px; font-family: 'Consolas', monospace; font-size: 12px;"></textarea>
+      
+      <button id="ia-copy-btn" class="btn-copier">📋 Copier le prompt magique</button>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
@@ -221,7 +299,9 @@ const TEMPLATES = {
 
   <section class="resume-template-renderer-section personal-data">
     <h2 class="resume-template-renderer-section__title">Informations personnelles</h2>
-    <div class="personal-data__photo" style="background:#eee;"></div>
+    <div class="personal-data__photo" style="background:#eee;">
+      <!-- URL_DE_VOTRE_PHOTO_ICI -->
+    </div>
     <div class="personal-data__title-row">
       <span class="personal-data__name">Prenom Nom</span><span class="personal-data__desired-job-title">Titre du poste</span>
     </div>
@@ -530,6 +610,7 @@ a { color: inherit; text-decoration: underline; }
   },
   moderne: {
     html: `<header class="cv-head">
+  <!-- URL_DE_VOTRE_PHOTO_ICI -->
   <h1>Prenom Nom</h1>
   <p class="role">Titre du poste recherche</p>
   <p class="contact">email@example.com &middot; +33 6 00 00 00 00 &middot; linkedin.com/in/profil &middot; Ville</p>
@@ -598,7 +679,8 @@ ul.skills { list-style: none; padding: 0; display: flex; flex-wrap: wrap; gap: 6
 ul.skills li { background: #eff6ff; color: #2563eb; padding: 2px 10px; border-radius: 12px; font-size: 9.5pt; font-weight: 500; }`,
   },
   minimal: {
-    html: `<h1>Prenom Nom</h1>
+    html: `<!-- URL_DE_VOTRE_PHOTO_ICI -->
+<h1>Prenom Nom</h1>
 <p class="meta">Titre du poste &middot; email@example.com &middot; +33 6 00 00 00 00</p>
 
 <h2>Experience</h2>
@@ -775,6 +857,8 @@ require(['vs/editor/editor.main'], function () {
       $('company').value  = localEntry.company  || '';
       $('role').value     = localEntry.role     || '';
       $('notes').value    = localEntry.notes    || '';
+      $('ia-job-desc').value = localEntry.job_desc || '';
+      if(typeof updatePrompt === 'function') updatePrompt();
       refreshFilenamePreview();
 
       // Charger le HTML depuis le Blob ou l'URL passée en param
@@ -802,6 +886,8 @@ require(['vs/editor/editor.main'], function () {
           $('company').value  = entry.company  || '';
           $('role').value     = entry.role     || '';
           $('notes').value    = entry.notes    || '';
+          $('ia-job-desc').value = entry.job_desc || '';
+          if(typeof updatePrompt === 'function') updatePrompt();
           refreshFilenamePreview();
 
           const src = htmlUrl || entry.html_blob_url || '';
@@ -859,6 +945,7 @@ $('go').onclick = async () => {
         company:    $('company').value.trim(),
         role:       $('role').value.trim(),
         notes:      $('notes').value.trim(),
+        job_desc:   $('ia-job-desc').value.trim(),
         format:     $('format').value,
         margin:     $('margin').value,
         background: $('bg').checked,
@@ -899,6 +986,7 @@ $('go').onclick = async () => {
           company:    $('company').value.trim(),
           role:       $('role').value.trim(),
           notes:      $('notes').value.trim(),
+          job_desc:   $('ia-job-desc').value.trim(),
           pdf_url:    pdfBlobUrl,
           html_url:   htmlBlobUrl,
         });
@@ -919,23 +1007,171 @@ $('go').onclick = async () => {
   const splitter   = $('splitter');
   const editorPane = $('editor-pane');
   let dragging     = false;
-  splitter.addEventListener('mousedown', e => {
+
+  const onStart = (e) => {
     dragging = true;
-    e.preventDefault();
-    document.body.style.cursor = 'col-resize';
-  });
-  window.addEventListener('mousemove', e => {
+    // Eviter preventDefault sur touchstart si non necessaire, mais requis ici pour bloquer le scroll
+    if (e.cancelable) e.preventDefault();
+    const isMobile = window.innerWidth <= 768;
+    document.body.style.cursor = isMobile ? 'row-resize' : 'col-resize';
+  };
+
+  const onMove = (e) => {
     if (!dragging) return;
     const rect = split.getBoundingClientRect();
-    const x    = e.clientX - rect.left;
-    const pct  = Math.max(15, Math.min(85, (x / rect.width) * 100));
-    editorPane.style.flexBasis = `${pct}%`;
-  });
-  window.addEventListener('mouseup', () => {
+    const isMobile = window.innerWidth <= 768;
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    
+    if (isMobile) {
+      const y = clientY - rect.top;
+      const pct = Math.max(15, Math.min(85, (y / rect.height) * 100));
+      editorPane.style.flexBasis = `${pct}%`;
+    } else {
+      const x = clientX - rect.left;
+      const pct = Math.max(15, Math.min(85, (x / rect.width) * 100));
+      editorPane.style.flexBasis = `${pct}%`;
+    }
+  };
+
+  const onEnd = () => {
     dragging = false;
     document.body.style.cursor = '';
-  });
+  };
+
+  splitter.addEventListener('mousedown', onStart);
+  splitter.addEventListener('touchstart', onStart, {passive: false});
+  window.addEventListener('mousemove', onMove);
+  window.addEventListener('touchmove', onMove, {passive: false});
+  window.addEventListener('mouseup', onEnd);
+  window.addEventListener('touchend', onEnd);
 })();
+
+// ---- Assistant IA ----------------------------------------------------------
+const modalIa = $('modal-ia');
+$('btn-ia').onclick = () => {
+  modalIa.style.display = 'flex';
+  updatePrompt();
+};
+$('close-modal').onclick = () => modalIa.style.display = 'none';
+window.addEventListener('click', e => { if (e.target === modalIa) modalIa.style.display = 'none'; });
+
+function updatePrompt() {
+  const jobDesc = $('ia-job-desc').value.trim();
+  const tplName = $('ia-template').value;
+  const wantLetter = $('ia-cover-letter').checked;
+  const tpl = TEMPLATES[tplName] || TEMPLATES['sobre'];
+
+  let prompt = `Agis en tant qu'expert en recrutement. Je te fournis en pièce jointe mon CV actuel.
+
+Voici l'offre d'emploi à laquelle je postule :
+---
+${jobDesc || "[Collez votre offre d'emploi ici ou décrivez le poste visé]"}
+---
+
+Ton objectif est de rédiger mon nouveau CV${wantLetter ? ' ET MA LETTRE DE MOTIVATION' : ''} optimisé(s) pour ce poste, en utilisant STRICTEMENT la structure HTML fournie ci-dessous.
+
+Règles :
+1. Fais d'abord une brève analyse des mots-clés de l'offre et de mon profil.
+2. Remplis les balises HTML avec mes informations. Sois concis pour que le CV tienne sur 1 page A4.
+3. Ne modifie AUCUNE classe CSS, ne touche pas à la structure.
+4. Pour la photo de profil, laisse exactement le tag suivant sans le modifier : src="URL_DE_VOTRE_PHOTO_ICI".
+5. Rends UNIQUEMENT le(s) bloc(s) de code HTML final, prêt(s) à être copié(s).
+
+Voici le squelette du CV à remplir :
+\`\`\`html
+${tpl.html}
+\`\`\`
+`;
+
+  if (wantLetter) {
+    prompt += `
+Voici le squelette de la lettre de motivation à remplir :
+\`\`\`html
+<div style="padding: 40px; font-family: sans-serif; font-size: 11pt; line-height: 1.5; color: #333;">
+  <p><strong>Prénom Nom</strong><br>
+  email@example.com &middot; +33 6 00 00 00 00<br>
+  Ville</p>
+  <br><br>
+  <p><strong>À l'attention du responsable du recrutement</strong><br>
+  [Nom de l'entreprise]</p>
+  <br><br>
+  <p><strong>Objet : Candidature au poste de [Titre du poste]</strong></p>
+  <br>
+  <p>Madame, Monsieur,</p>
+  <p>[Paragraphe 1 : Accroche contextuelle (Vous)]</p>
+  <p>[Paragraphe 2 : Compétences et valeur ajoutée (Moi)]</p>
+  <p>[Paragraphe 3 : Projection future (Nous)]</p>
+  <p>[Appel à l'action pour un entretien]</p>
+  <br>
+  <p>Cordialement,</p>
+  <p>Prénom Nom</p>
+</div>
+\`\`\`
+`;
+  }
+  $('ia-prompt').value = prompt;
+}
+
+$('ia-job-desc').addEventListener('input', updatePrompt);
+$('ia-template').addEventListener('change', updatePrompt);
+$('ia-cover-letter').addEventListener('change', updatePrompt);
+
+$('ia-copy-btn').onclick = () => {
+  navigator.clipboard.writeText($('ia-prompt').value).then(() => {
+    const btn = $('ia-copy-btn');
+    const oldText = btn.textContent;
+    const oldBg = btn.style.background;
+    btn.textContent = '✅ Copié ! Collez-le dans ChatGPT/Claude';
+    btn.style.background = '#5dd39e';
+    setTimeout(() => {
+      btn.textContent = oldText;
+      btn.style.background = oldBg;
+    }, 3000);
+  });
+};
+
+// ---- Insertion Photo Base64 ------------------------------------------------
+$('btn-photo').onclick = () => {
+  if (htmlModel && !htmlModel.getValue().includes('URL_DE_VOTRE_PHOTO_ICI')) {
+    alert("ℹ️ Aucun emplacement automatique de photo détecté.\n\nVotre photo sera insérée exactement là où se trouve actuellement votre curseur clignotant dans le code HTML.\n\nAssurez-vous d'avoir cliqué au bon endroit dans l'éditeur avant de choisir votre image !");
+  }
+  $('photo-upload').click();
+};
+$('photo-upload').onchange = e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = rev => {
+    const base64 = rev.target.result;
+    if (!htmlModel) return;
+    const currentHtml = htmlModel.getValue();
+    const photoCode = `\n<!-- #region Photo_Base64 -->\n<img src="${base64}" alt="Photo de profil" style="width:80px; border-radius:4px;"/>\n<!-- #endregion -->\n`;
+
+    if (currentHtml.includes('URL_DE_VOTRE_PHOTO_ICI')) {
+      let newHtml = currentHtml;
+      if (currentHtml.includes('src="URL_DE_VOTRE_PHOTO_ICI"')) {
+        newHtml = currentHtml.replace('URL_DE_VOTRE_PHOTO_ICI', base64);
+      } else {
+        newHtml = currentHtml.replace('<!-- URL_DE_VOTRE_PHOTO_ICI -->', photoCode.trim()).replace('URL_DE_VOTRE_PHOTO_ICI', photoCode.trim());
+      }
+      htmlModel.setValue(newHtml);
+      setStatus('Photo insérée avec succès dans le CV !', 'ok');
+    } else {
+      insertSnippet(photoCode);
+      setStatus('Photo insérée là où se trouvait votre curseur.', 'ok');
+    }
+    
+    // Replier le code Base64 pour ne pas polluer l'éditeur visuellement
+    setTimeout(() => {
+      if (editor) {
+        editor.trigger('fold', 'editor.foldAllMarkerRegions');
+      }
+    }, 100);
+  };
+  reader.readAsDataURL(file);
+  e.target.value = '';
+};
 </script>
 </body>
 </html>
@@ -1054,6 +1290,7 @@ function render(filter) {
     (e.role     || '').toLowerCase().includes(f) ||
     (e.doc_type || '').toLowerCase().includes(f) ||
     (e.notes    || '').toLowerCase().includes(f) ||
+    (e.job_desc || '').toLowerCase().includes(f) ||
     (e.filename || '').toLowerCase().includes(f)
   );
   const root = $('root');
@@ -1189,6 +1426,7 @@ def convert():
     company        = (data.get("company") or "").strip()
     role           = (data.get("role") or "").strip()
     notes          = (data.get("notes") or "").strip()
+    job_desc       = (data.get("job_desc") or "").strip()
     custom_filename = (data.get("filename") or "").strip()
 
     try:
@@ -1209,6 +1447,7 @@ def convert():
             role=role,
             notes=notes,
             custom_filename=custom_filename,
+            job_desc=job_desc,
         )
     except Exception as e:
         # Archivage impossible (disque plein, permissions…) — on retourne quand même le PDF
