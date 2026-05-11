@@ -1060,7 +1060,7 @@ function updatePrompt() {
   const wantLetter = $('ia-cover-letter').checked;
   const tpl = TEMPLATES[tplName] || TEMPLATES['sobre'];
 
-  let prompt = `Agis en tant qu'expert en recrutement. Je te fournis en pièce jointe mon CV actuel.
+  let prompt = `Agis en tant qu'expert en recrutement. Je te fournis en pièce jointe mon CV actuel en .pdf ou html.
 
 Voici l'offre d'emploi à laquelle je postule :
 ---
@@ -1071,10 +1071,13 @@ Ton objectif est de rédiger mon nouveau CV${wantLetter ? ' ET MA LETTRE DE MOTI
 
 Règles :
 1. Fais d'abord une brève analyse des mots-clés de l'offre et de mon profil.
-2. Remplis les balises HTML avec mes informations. Sois concis pour que le CV tienne sur 1 page A4.
+2. Remplis les balises HTML avec mes informations. Le CV doit tenir sur 1 page A4.
 3. Ne modifie AUCUNE classe CSS, ne touche pas à la structure.
 4. Pour la photo de profil, laisse exactement le tag suivant sans le modifier : src="URL_DE_VOTRE_PHOTO_ICI".
 5. Rends UNIQUEMENT le(s) bloc(s) de code HTML final, prêt(s) à être copié(s).
+6. Pour les compétences, liste 9 compétences maximum les plus pertinentes pour le poste et pas plus de 3 par catégorie.
+7. Pour chaque expériences professionnelles, liste 3 à 4 tâches maximum.
+8. Pour les expériences professionnelles, liste les dates en format : MM/AAAA - MM/AAAA ou MM/AAAA - Présent.
 
 Voici le squelette du CV à remplir :
 \`\`\`html
