@@ -29,7 +29,7 @@ try:
 except ImportError:
     _HAS_TKINTER = False
 
-from flask import Flask, Response, abort, jsonify, render_template_string, request, send_file
+from flask import Flask, Response, abort, jsonify, redirect, render_template_string, request, send_file
 
 import archive
 from pdf_engine import html_to_pdf_bytes, VALID_FORMATS, VALID_MARGINS
@@ -1319,19 +1319,17 @@ function showError(msg) {
 }
 
 async function load() {
-  // 1. En local : on privilégie l'API Serveur pour la vérité absolue
-  if (!IS_SERVERLESS) {
-    try {
-      const r = await fetch('/api/history');
-      if (r.ok) {
-        entries = await r.json();
-        render($('search').value);
-        return;
-      }
-    } catch (_) {}
-  }
+  // 1. Toujours essayer l'API d'abord (MongoDB sur Render, local en dev)
+  try {
+    const r = await fetch('/api/history');
+    if (r.ok) {
+      entries = await r.json();
+      render($('search').value);
+      return;
+    }
+  } catch (_) {}
 
-  // 2. Sur Vercel ou fallback : on utilise le localStorage
+  // 2. Fallback : localStorage (hors-ligne ou Vercel sans MongoDB)
   try {
     const raw    = localStorage.getItem(HISTORY_KEY);
     const parsed = raw ? JSON.parse(raw) : null;
@@ -1517,10 +1515,13 @@ def api_history_html(doc_id):
     entry = archive.get_document(doc_id)
     if not entry:
         abort(404)
-    html_path = Path(entry["html_path"])
-    if not html_path.exists():
-        abort(404)
-    return html_path.read_text(encoding="utf-8"), 200, {"Content-Type": "text/plain; charset=utf-8"}
+    html_path = Path(entry.get("html_path", ""))
+    if html_path.exists():
+        return html_path.read_text(encoding="utf-8"), 200, {"Content-Type": "text/plain; charset=utf-8"}
+    blob_url = entry.get("html_blob_url", "")
+    if blob_url:
+        return redirect(blob_url)
+    abort(404)
 
 
 @app.route("/api/history/<doc_id>/pdf")
@@ -1528,15 +1529,18 @@ def api_history_pdf(doc_id):
     entry = archive.get_document(doc_id)
     if not entry:
         abort(404)
-    pdf_path = Path(entry["pdf_path"])
-    if not pdf_path.exists():
-        abort(404)
-    return send_file(
-        pdf_path,
-        mimetype="application/pdf",
-        as_attachment=False,
-        download_name=entry["filename"],
-    )
+    pdf_path = Path(entry.get("pdf_path", ""))
+    if pdf_path.exists():
+        return send_file(
+            pdf_path,
+            mimetype="application/pdf",
+            as_attachment=False,
+            download_name=entry["filename"],
+        )
+    blob_url = entry.get("pdf_blob_url", "")
+    if blob_url:
+        return redirect(blob_url)
+    abort(404)
 
 
 @app.route("/api/history/<doc_id>/open", methods=["POST"])
