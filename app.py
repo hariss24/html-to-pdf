@@ -289,7 +289,7 @@ PAGE = r"""<!DOCTYPE html>
     </div>
   </div>
 
-  <details open>
+  <details>
     <summary>Options PDF (avancées)</summary>
     <div class="opts">
       <div class="opt">
@@ -966,6 +966,88 @@ require(['vs/editor/editor.main'], function () {
     htmlModel.setValue(tpl.html);
     cssModel.setValue(tpl.css);
   };
+
+  // ---- Sélecteur de type de document (CV / Lettre) -------------------------
+  // Chaque type conserve son propre contenu séparément dans le localStorage.
+  const _TYPE_STORE_PREFIX = 'html-to-pdf:type:';
+
+  const _LETTRE_SKELETON = `<div style="font-family: Georgia, 'Times New Roman', serif; max-width: 680px; margin: 40px auto; color: #222; line-height: 1.7; font-size: 14px;">
+
+  <div style="text-align: right; margin-bottom: 48px;">
+    <p style="margin: 0;">Prénom Nom<br>
+    Adresse, Ville<br>
+    email@example.com &middot; +33 6 00 00 00 00</p>
+    <p style="margin: 16px 0 0;">Ville, le JJ/MM/AAAA</p>
+  </div>
+
+  <div style="margin-bottom: 32px;">
+    <p style="margin: 0;"><strong>Nom de l'entreprise</strong><br>
+    Service Recrutement<br>
+    Adresse de l'entreprise</p>
+  </div>
+
+  <p><strong>Objet : Candidature au poste de [Intitulé du poste]</strong></p>
+
+  <p>Madame, Monsieur,</p>
+
+  <p>[Accroche : présentez-vous brièvement et expliquez pourquoi ce poste et cette entreprise vous intéressent particulièrement.]</p>
+
+  <p>[Argumentaire : décrivez vos compétences et expériences les plus pertinentes, avec des exemples concrets.]</p>
+
+  <p>[Conclusion : réaffirmez votre motivation, mentionnez votre disponibilité pour un entretien et remerciez pour l'attention portée à votre candidature.]</p>
+
+  <p>Dans l'attente de votre réponse, je reste à votre disposition pour tout échange.</p>
+
+  <p>Veuillez agréer, Madame, Monsieur, l'expression de mes salutations distinguées.</p>
+
+  <br><br>
+  <p>Prénom Nom</p>
+
+</div>`;
+
+  function _docTypeKey(type) { return _TYPE_STORE_PREFIX + type.toLowerCase(); }
+
+  function _saveContentForType(type) {
+    if (!htmlModel) return;
+    try {
+      localStorage.setItem(_docTypeKey(type), JSON.stringify({
+        html: htmlModel.getValue(),
+        css: cssModel ? cssModel.getValue() : '',
+      }));
+    } catch (_) {}
+  }
+
+  function _loadContentForType(type) {
+    if (!htmlModel) return;
+    const raw = localStorage.getItem(_docTypeKey(type));
+    if (raw) {
+      try {
+        const saved = JSON.parse(raw);
+        htmlModel.setValue(saved.html || '');
+        if (cssModel) cssModel.setValue(saved.css || '');
+        return;
+      } catch (_) {}
+    }
+    // Aucun contenu sauvegardé pour ce type → charger le squelette
+    if (type === 'Lettre') {
+      htmlModel.setValue(_LETTRE_SKELETON);
+      if (cssModel) cssModel.setValue('');
+    }
+    // Pour CV sans contenu : on garde ce qui est déjà dans l'éditeur
+  }
+
+  let _activeDocType = $('doc_type').value || 'CV';
+  // Enregistrer le contenu initial sous le type actif (bootstrap)
+  _saveContentForType(_activeDocType);
+
+  $('doc_type').addEventListener('change', function () {
+    const newType = this.value;
+    if (newType === _activeDocType) return;
+    _saveContentForType(_activeDocType);   // mémoriser l'ancien type
+    _activeDocType = newType;
+    _loadContentForType(newType);          // restaurer ou créer le nouveau
+    refreshFilenamePreview();
+  });
 
   // ---- Chargement depuis l'historique (?load= ou ?htmlUrl=) ----------------
   const params   = new URLSearchParams(location.search);
