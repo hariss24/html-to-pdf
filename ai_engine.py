@@ -5,12 +5,12 @@ Usage :
         print(chunk, end="", flush=True)
 """
 import os
+import re
 from typing import Generator
 
-# Modèle Gemini utilisé.
-# gemini-2.0-flash-lite : free tier, rapide, recommandé par défaut.
-# gemini-2.0-flash      : meilleur mais peut requérir la facturation.
-GEMINI_MODEL: str = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash-lite")
+# gemini-2.0-flash : meilleur rapport qualité/quota sur le free tier.
+# gemini-2.0-flash-lite : plus rapide mais quota journalier plus faible.
+GEMINI_MODEL: str = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
 
 
 def stream_completion(
@@ -37,7 +37,7 @@ def stream_completion(
     if not key:
         raise ValueError(
             "Aucune clé API configurée. "
-            "Ajoutez GEMINI_API_KEY dans les variables d'environnement Render.com "
+            "Ajoutez GEMINI_API_KEY dans les variables d'environnement "
             "ou une clé personnelle dans ⚙️ Paramètres."
         )
 
@@ -54,6 +54,15 @@ def stream_completion(
 
 def _is_anthropic_key(key: str) -> bool:
     return key.startswith("sk-ant-")
+
+
+def _parse_retry_delay(exc_str: str) -> str | None:
+    """Extrait le délai de retry depuis un message d'erreur Google (ex: '34s')."""
+    m = re.search(r"retryDelay['\"]?\s*[:=]\s*['\"]?(\d+)s", exc_str)
+    if m:
+        secs = int(m.group(1))
+        return f"{secs // 60} min {secs % 60} s" if secs >= 60 else f"{secs} s"
+    return None
 
 
 def _stream_gemini(
@@ -76,13 +85,24 @@ def _stream_gemini(
 
     config = types.GenerateContentConfig(system_instruction=system)
 
-    for chunk in client.models.generate_content_stream(
-        model=GEMINI_MODEL,
-        contents=contents,
-        config=config,
-    ):
-        if chunk.text:
-            yield chunk.text
+    try:
+        for chunk in client.models.generate_content_stream(
+            model=GEMINI_MODEL,
+            contents=contents,
+            config=config,
+        ):
+            if chunk.text:
+                yield chunk.text
+    except Exception as exc:
+        exc_str = str(exc)
+        if "429" in exc_str or "RESOURCE_EXHAUSTED" in exc_str or "quota" in exc_str.lower():
+            delay = _parse_retry_delay(exc_str)
+            retry_hint = f" Réessayez dans {delay}." if delay else " Réessayez dans quelques minutes."
+            raise RuntimeError(
+                f"Quota Gemini épuisé ({GEMINI_MODEL}).{retry_hint} "
+                "Pour ne plus avoir cette limite, ajoutez votre propre clé dans ⚙️ Paramètres."
+            ) from None
+        raise
 
 
 def _stream_anthropic(
