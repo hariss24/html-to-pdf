@@ -532,7 +532,7 @@ async function renderSnapshotsList() {
     item.innerHTML = `
       <div>
         <div>${s.label}</div>
-        <div class="snap-meta">${date} — ${chars.toLocaleString()} car. — ${s.doc_type || 'CV'}${s.company ? ' · ' + s.company : ''}${s.role ? ' · ' + s.role : ''}</div>
+        <div class="snap-meta">${date} · ${chars.toLocaleString()} car. · ${s.doc_type || 'CV'}${s.company ? ' · ' + s.company : ''}${s.role ? ' · ' + s.role : ''}</div>
       </div>
       <div class="snap-actions">
         <button class="snap-restore">Restaurer</button>
@@ -933,23 +933,23 @@ _initLevelSelector('ia-level-selector', (lvl) => { _iaLevel = lvl; updatePrompt(
 
 // ---- Prompts par niveau pour l'assistant IA ----------------------
 const LEVEL_PROMPT_RULES = {
-  peu: `Règles d'adaptation (niveau SUBTIL — peu adapté) :
-- Ajuste le titre/tagline sous le nom pour refléter le type de poste visé de façon générique.
+  peu: `Règles d'adaptation (niveau SUBTIL) :
+- Ajuste le titre/tagline sous le nom pour refléter le type de poste visé, de façon générique.
 - Réoriente le résumé/accroche avec 2-3 mots-clés du poste, de façon naturelle et non évidente.
 - NE modifie PAS les compétences, les expériences, les langues, les centres d'intérêt, la formation.
 - Le CV doit rester fidèle à l'original à 95%.
-- ANTI-DÉTECTION : N'écris JAMAIS le nom de l'entreprise ciblée dans le résumé ou le titre. Le CV doit sembler naturel, pas adapté spécifiquement à une seule offre.`,
-  adapte: `Règles d'adaptation (niveau MODÉRÉ — adapté) :
+- ANTI-DÉTECTION : n'écris jamais le nom de l'entreprise ciblée dans le résumé ou le titre. Le CV doit sembler naturel, pas taillé pour une seule offre.`,
+  adapte: `Règles d'adaptation (niveau MODÉRÉ) :
 - Ajuste le titre/tagline et réécris le résumé/accroche pour le type de poste visé.
 - Réordonne les compétences existantes (sans en ajouter ni supprimer).
-- Enrichis et reformule les puces d'expériences existantes (4 puces max par expérience, sans fabriquer de contenu absent du CV).
+- Enrichis et reformule les puces d'expériences existantes (4 puces max par expérience, sans inventer de contenu absent du CV).
 - NE touche PAS aux langues (garde-les toutes), aux centres d'intérêt, aux dates, aux entreprises du parcours.
-- ANTI-DÉTECTION : N'écris JAMAIS le nom de l'entreprise ciblée dans le résumé ou le titre.`,
-  hyper: `Règles d'adaptation (niveau MAXIMUM — hyper-adapté) :
+- ANTI-DÉTECTION : n'écris jamais le nom de l'entreprise ciblée dans le résumé ou le titre.`,
+  hyper: `Règles d'adaptation (niveau MAXIMUM) :
 - Ajuste le titre/tagline et réécris complètement le résumé/accroche.
 - Réorganise et reformule les compétences existantes (sans en inventer de nouvelles).
-- Réécris entièrement les puces d'expériences (4 puces max par expérience, sans fabriquer de contenu absent du CV).
-- ANTI-DÉTECTION : N'écris JAMAIS le nom de l'entreprise ciblée dans le résumé ou le titre.
+- Réécris entièrement les puces d'expériences (4 puces max par expérience, sans inventer de contenu absent du CV).
+- ANTI-DÉTECTION : n'écris jamais le nom de l'entreprise ciblée dans le résumé ou le titre.
 - ABSOLUMENT INTERDIT : supprimer des langues, supprimer les centres d'intérêt, inventer des compétences, modifier les dates/entreprises du parcours/diplômes.`,
 };
 

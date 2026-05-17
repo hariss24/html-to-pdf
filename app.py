@@ -317,7 +317,7 @@ _TAILOR_SYSTEMS = {
         "(1) ajuster le titre/tagline sous le nom pour refléter le poste visé de façon générique ; "
         "(2) réécrire complètement le résumé/accroche ; "
         "(3) réorganiser ET reformuler les compétences existantes pour maximiser la pertinence "
-        "(SANS en inventer de nouvelles — uniquement celles déjà présentes dans le CV original) ; "
+        "(SANS en inventer de nouvelles, uniquement celles déjà présentes dans le CV original) ; "
         "(4) réécrire entièrement les puces d'expériences pour aligner au maximum avec les mots-clés "
         "du poste (maximum 4 puces par expérience, sans fabriquer de contenu absent du CV). "
         "RÈGLE ABSOLUE ANTI-DÉTECTION : N'écris JAMAIS le nom de l'entreprise ciblée, "
@@ -347,8 +347,8 @@ def _check_quota(user_key: str | None) -> Response | None:
     """Retourne une réponse d'erreur si le quota est dépassé, None sinon."""
     if not user_key and not quota.check_and_increment():
         return jsonify({"error": (
-            "Quota journalier atteint — colle ton texte manuellement "
-            "ou ajoute ta propre clé dans ⚙️ Paramètres."
+            "Quota journalier atteint. Colle ton texte manuellement "
+            "ou ajoute ta propre clé dans les paramètres."
         )}), 429
     return None
 
