@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Historique</title>
+<meta name="is-serverless" content="{{ is_serverless | tojson }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/history.css') }}">
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <h1>Historique</h1>
+    <a href="/">&lsaquo; Retour</a>
+  </div>
+  <input type="text" id="search" placeholder="Rechercher entreprise, poste, notes..." />
+  <div id="root"></div>
+</div>
+<script src="{{ url_for('static', filename='js/history.js') }}"></script>
+</body>
+</html>

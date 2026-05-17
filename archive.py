@@ -1,14 +1,15 @@
 """Archive des PDFs générés et de leurs sources HTML.
 
-Les documents sont stockés dans ~/Documents/CV-Archive/ (local) ou
-/tmp/CV-Archive/ (serverless) avec un index history.json.
-Quand BLOB_READ_WRITE_TOKEN est défini, les fichiers sont aussi uploadés
-sur Vercel Blob Storage pour une persistance permanente.
+Backend local : SQLite (history.db) — thread-safe, transactionnel.
+Backend serverless : MongoDB ou SQLite dans /tmp.
+Blob Storage optionnel : Vercel Blob via BLOB_READ_WRITE_TOKEN.
 """
 
 import json
 import os
 import re
+import sqlite3
+import threading
 import unicodedata
 import urllib.parse
 import urllib.request as _urllib_req
@@ -29,7 +30,6 @@ if _MONGO_URI:
     try:
         import pymongo
         _mongo_client = pymongo.MongoClient(_MONGO_URI, serverSelectionTimeoutMS=5000)
-        # On utilise une DB nommée 'cv_generator' et une collection 'history'
         _history_collection = _mongo_client.get_database("cv_generator").get_collection("history")
     except Exception as e:
         print("Erreur d'initialisation MongoDB :", e)
@@ -40,7 +40,7 @@ _IS_SERVERLESS: bool = bool(
     os.environ.get("VERCEL")
     or os.environ.get("AWS_LAMBDA_FUNCTION_NAME")
     or os.environ.get("PDF_ENGINE", "").lower() == "weasyprint"
-    or _MONGO_URI  # Si MongoDB est là, on le traite comme Serverless (disque éphémère ou cloud)
+    or _MONGO_URI
 )
 
 # ---- Répertoire d'archive ---------------------------------------------------
@@ -50,26 +50,97 @@ ARCHIVE_DIR: Path = (
     else Path.home() / "Documents" / "CV-Archive"
 )
 HISTORY_FILE: Path = ARCHIVE_DIR / "history.json"
+_DB_PATH: Path = ARCHIVE_DIR / "history.db"
 
 DOC_TYPES: tuple[str, ...] = ("CV", "Lettre", "Autre")
-
-# Nombre maximal de tentatives pour trouver un nom de fichier unique
 _MAX_UNIQUE_TRIES: int = 100
 
+# ---- SQLite init (mode local) -----------------------------------------------
+_init_lock = threading.Lock()
+_db_initialized = False
 
-# ---- Gestion du répertoire d'archive ----------------------------------------
+_CREATE_TABLE = """
+CREATE TABLE IF NOT EXISTS documents (
+    id           TEXT PRIMARY KEY,
+    created_at   TEXT NOT NULL,
+    doc_type     TEXT DEFAULT 'CV',
+    company      TEXT DEFAULT '',
+    role         TEXT DEFAULT '',
+    notes        TEXT DEFAULT '',
+    job_desc     TEXT DEFAULT '',
+    filename     TEXT DEFAULT '',
+    pdf_path     TEXT DEFAULT '',
+    html_path    TEXT DEFAULT '',
+    pdf_blob_url TEXT DEFAULT '',
+    html_blob_url TEXT DEFAULT ''
+)
+"""
+
+
+def _get_db() -> sqlite3.Connection:
+    """Ouvre une connexion SQLite en mode WAL (lecture concurrente sans lock)."""
+    conn = sqlite3.connect(str(_DB_PATH), check_same_thread=False, timeout=10)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    return conn
+
+
+def _sqlite_init() -> None:
+    """Crée la table si absente, migre history.json si présent."""
+    with _get_db() as conn:
+        conn.execute(_CREATE_TABLE)
+        conn.commit()
+    _migrate_from_json()
+
+
+def _migrate_from_json() -> None:
+    """Migration one-shot : history.json → history.db."""
+    if not HISTORY_FILE.exists():
+        return
+    try:
+        entries = json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
+        if entries:
+            with _get_db() as conn:
+                for e in entries:
+                    conn.execute(
+                        "INSERT OR IGNORE INTO documents VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                        (
+                            e.get("id", ""),
+                            e.get("created_at", ""),
+                            e.get("doc_type", "CV"),
+                            e.get("company", ""),
+                            e.get("role", ""),
+                            e.get("notes", ""),
+                            e.get("job_desc", ""),
+                            e.get("filename", ""),
+                            e.get("pdf_path", ""),
+                            e.get("html_path", ""),
+                            e.get("pdf_blob_url", ""),
+                            e.get("html_blob_url", ""),
+                        ),
+                    )
+                conn.commit()
+        HISTORY_FILE.rename(HISTORY_FILE.with_suffix(".json.migrated"))
+        print(f"Migré {len(entries)} entrées de history.json → history.db")
+    except Exception as e:
+        print(f"Erreur migration JSON→SQLite : {e}")
+
 
 def ensure_archive_dir() -> Path:
+    global _db_initialized
     ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
-    if not HISTORY_FILE.exists():
-        _write_history([])
+    if not _IS_SERVERLESS and not _db_initialized:
+        with _init_lock:
+            if not _db_initialized:
+                _sqlite_init()
+                _db_initialized = True
     return ARCHIVE_DIR
 
 
 # ---- Utilitaires de nommage -------------------------------------------------
 
 def _slug(value: str) -> str:
-    """Convertit une chaîne en slug ASCII sans espaces ni caractères spéciaux."""
     if not value:
         return ""
     normalized = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
@@ -78,17 +149,13 @@ def _slug(value: str) -> str:
 
 
 def _safe_filename(name: str) -> str:
-    """Sanitise un nom de fichier fourni par l'utilisateur.
-
-    Empêche la traversée de répertoire et les caractères dangereux.
-    """
-    # Extraire seulement le basename (pas de chemin)
-    name = Path(name).name
-    # Supprimer les caractères dangereux sous Windows et Linux
+    """Sanitise un nom de fichier et prévient la traversée de répertoire."""
+    name = Path(name).name  # basename seulement
     name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", name)
-    # Éviter les noms réservés Windows
     if re.match(r'^(CON|PRN|AUX|NUL|COM\d|LPT\d)(\..*)?$', name, re.I):
         name = f"_{name}"
+    # Empêche les chemins absolus qui auraient survécu
+    name = name.lstrip("/\\.")
     return name or "document"
 
 
@@ -113,7 +180,6 @@ def make_filename(
 
 
 def _unique_path(directory: Path, filename: str) -> Path:
-    """Retourne un chemin unique dans `directory` pour `filename`."""
     candidate = directory / filename
     if not candidate.exists():
         return candidate
@@ -123,39 +189,90 @@ def _unique_path(directory: Path, filename: str) -> Path:
         candidate = directory / f"{stem}_{n}{suffix}"
         if not candidate.exists():
             return candidate
-    # Dernier recours : UUID
     return directory / f"{stem}_{uuid.uuid4().hex[:8]}{suffix}"
 
 
-# ---- Lecture / écriture de l'historique -------------------------------------
+# ---- Backend local SQLite ---------------------------------------------------
+
+def _local_save(entry: dict) -> None:
+    with _get_db() as conn:
+        conn.execute(
+            "INSERT INTO documents VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                entry["id"], entry["created_at"], entry.get("doc_type", "CV"),
+                entry.get("company", ""), entry.get("role", ""),
+                entry.get("notes", ""), entry.get("job_desc", ""),
+                entry.get("filename", ""), entry.get("pdf_path", ""),
+                entry.get("html_path", ""), entry.get("pdf_blob_url", ""),
+                entry.get("html_blob_url", ""),
+            ),
+        )
+        conn.commit()
+
+
+def _local_read_all() -> list[dict]:
+    try:
+        with _get_db() as conn:
+            rows = conn.execute(
+                "SELECT * FROM documents ORDER BY created_at DESC"
+            ).fetchall()
+            return [dict(row) for row in rows]
+    except Exception as e:
+        print(f"Erreur lecture SQLite : {e}")
+        return []
+
+
+def _local_get(doc_id: str) -> dict | None:
+    try:
+        with _get_db() as conn:
+            row = conn.execute(
+                "SELECT * FROM documents WHERE id=?", (doc_id,)
+            ).fetchone()
+            return dict(row) if row else None
+    except Exception:
+        return None
+
+
+def _local_update_blobs(doc_id: str, pdf_url: str, html_url: str) -> None:
+    try:
+        with _get_db() as conn:
+            conn.execute(
+                "UPDATE documents SET pdf_blob_url=?, html_blob_url=? WHERE id=?",
+                (pdf_url, html_url, doc_id),
+            )
+            conn.commit()
+    except Exception as e:
+        print(f"Erreur update SQLite : {e}")
+
+
+def _local_delete(doc_id: str) -> dict | None:
+    """Supprime et retourne l'entrée, ou None si absente."""
+    try:
+        with _get_db() as conn:
+            row = conn.execute(
+                "SELECT * FROM documents WHERE id=?", (doc_id,)
+            ).fetchone()
+            if not row:
+                return None
+            conn.execute("DELETE FROM documents WHERE id=?", (doc_id,))
+            conn.commit()
+            return dict(row)
+    except Exception as e:
+        print(f"Erreur delete SQLite : {e}")
+        return None
+
+
+# ---- Lecture / écriture de l'historique (routage MongoDB / SQLite) ----------
 
 def _read_history() -> list[dict]:
     if _history_collection is not None:
         try:
-            # On récupère tous les documents, triés par date décroissante
-            docs = list(_history_collection.find({}, {"_id": 0}).sort("created_at", -1))
-            return docs
+            return list(_history_collection.find({}, {"_id": 0}).sort("created_at", -1))
         except Exception as e:
             print("Erreur lecture MongoDB :", e)
             return []
-
-    # Fallback local
     ensure_archive_dir()
-    try:
-        return json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError):
-        return []
-
-
-def _write_history(entries: Iterable[dict]) -> None:
-    # Cette fonction n'est utilisée que pour le mode "Local"
-    if _history_collection is not None:
-        return  # En MongoDB, on met à jour chaque doc un par un, on ne réécrit pas tout
-        
-    ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = HISTORY_FILE.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(list(entries), indent=2, ensure_ascii=False), encoding="utf-8")
-    tmp.replace(HISTORY_FILE)
+    return _local_read_all()
 
 
 # ---- API publique -----------------------------------------------------------
@@ -198,7 +315,6 @@ def save_document(
         "filename": pdf_path.name,
         "pdf_path": str(pdf_path),
         "html_path": str(html_path),
-        # Rempli par /convert après upload Blob (optionnel)
         "pdf_blob_url": "",
         "html_blob_url": "",
     }
@@ -209,32 +325,24 @@ def save_document(
             return entry
         except Exception as e:
             print("Erreur insertion MongoDB :", e)
+    else:
+        _local_save(entry)
 
-    history = _read_history()
-    history.insert(0, entry)
-    _write_history(history)
     return entry
 
 
 def update_document_blob_urls(doc_id: str, pdf_blob_url: str, html_blob_url: str) -> None:
-    """Met à jour les URLs Blob d'un document existant dans history.json ou MongoDB."""
     if _history_collection is not None:
         try:
             _history_collection.update_one(
                 {"id": doc_id},
-                {"$set": {"pdf_blob_url": pdf_blob_url, "html_blob_url": html_blob_url}}
+                {"$set": {"pdf_blob_url": pdf_blob_url, "html_blob_url": html_blob_url}},
             )
             return
         except Exception as e:
             print("Erreur update MongoDB :", e)
-
-    history = _read_history()
-    for entry in history:
-        if entry.get("id") == doc_id:
-            entry["pdf_blob_url"] = pdf_blob_url
-            entry["html_blob_url"] = html_blob_url
-            break
-    _write_history(history)
+    else:
+        _local_update_blobs(doc_id, pdf_blob_url, html_blob_url)
 
 
 def list_documents(limit: int | None = None) -> list[dict]:
@@ -243,19 +351,22 @@ def list_documents(limit: int | None = None) -> list[dict]:
 
 
 def get_document(doc_id: str) -> dict | None:
-    for entry in _read_history():
-        if entry.get("id") == doc_id:
-            return entry
-    return None
+    if _history_collection is not None:
+        try:
+            found = _history_collection.find_one({"id": doc_id}, {"_id": 0})
+            return found or None
+        except Exception:
+            return None
+    ensure_archive_dir()
+    return _local_get(doc_id)
 
 
 def delete_document(doc_id: str) -> bool:
     if _history_collection is not None:
         try:
             found = _history_collection.find_one({"id": doc_id})
-            if not found: return False
-            
-            # 1. Supprimer les fichiers Blob
+            if not found:
+                return False
             if _BLOB_TOKEN:
                 for key in ("pdf_blob_url", "html_blob_url"):
                     url = found.get(key, "")
@@ -264,26 +375,17 @@ def delete_document(doc_id: str) -> bool:
                             _delete_blob(url)
                         except Exception:
                             pass
-                            
-            # 2. Supprimer l'entrée DB
             _history_collection.delete_one({"id": doc_id})
             return True
         except Exception as e:
             print("Erreur delete MongoDB :", e)
             return False
 
-    history = _read_history()
-    remaining: list[dict] = []
-    found: dict | None = None
-    for entry in history:
-        if entry.get("id") == doc_id:
-            found = entry
-        else:
-            remaining.append(entry)
+    ensure_archive_dir()
+    found = _local_delete(doc_id)
     if not found:
         return False
 
-    # Supprimer les fichiers locaux (ignorer les erreurs)
     for key in ("pdf_path", "html_path"):
         path = Path(found.get(key, ""))
         if path.exists():
@@ -292,7 +394,6 @@ def delete_document(doc_id: str) -> bool:
             except OSError:
                 pass
 
-    # Supprimer les blobs Vercel si disponibles
     if _BLOB_TOKEN:
         for key in ("pdf_blob_url", "html_blob_url"):
             url = found.get(key, "")
@@ -300,23 +401,14 @@ def delete_document(doc_id: str) -> bool:
                 try:
                     _delete_blob(url)
                 except Exception:
-                    pass  # Non bloquant
+                    pass
 
-    _write_history(remaining)
     return True
 
 
 # ---- Vercel Blob Storage ----------------------------------------------------
 
 def upload_to_blob(data: bytes, filename: str, content_type: str = "application/octet-stream") -> str:
-    """Uploade `data` vers Vercel Blob, retourne l'URL publique permanente.
-
-    Nécessite BLOB_READ_WRITE_TOKEN (créé automatiquement par Vercel quand
-    on ajoute un Blob store dans le dashboard → Storage → Create → Blob).
-
-    Raises:
-        RuntimeError: si le token est absent ou si l'upload échoue.
-    """
     if not _BLOB_TOKEN:
         raise RuntimeError("BLOB_READ_WRITE_TOKEN non défini")
 
@@ -344,12 +436,10 @@ def upload_to_blob(data: bytes, filename: str, content_type: str = "application/
 
 
 def _delete_blob(blob_url: str) -> None:
-    """Supprime un blob Vercel via l'API REST (best-effort)."""
     if not _BLOB_TOKEN:
         return
-    encoded = urllib.parse.quote(blob_url, safe="")
     req = _urllib_req.Request(
-        f"https://blob.vercel-storage.com/delete",
+        "https://blob.vercel-storage.com/delete",
         data=json.dumps({"urls": [blob_url]}).encode(),
         method="POST",
         headers={
