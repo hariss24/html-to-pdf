@@ -1006,7 +1006,7 @@ Règles générales (non négociables) :
 3. Ne modifie AUCUNE classe CSS, ne touche pas à la structure HTML.
 4. Pour la photo de profil, laisse exactement le tag suivant sans le modifier : src="URL_DE_VOTRE_PHOTO_ICI".
 5. Rends UNIQUEMENT le(s) bloc(s) de code HTML final, prêt(s) à être copié(s).
-6. QUANTITÉS — RÈGLE CRITIQUE : le squelette est un modèle de structure, pas un modèle de quantité. Le nombre d'éléments dans chaque section (compétences, langues, expériences, formations) est indicatif. Ne jamais limiter à ce que le squelette montre.
+6. QUANTITÉS — RÈGLE CRITIQUE : le squelette est un modèle de structure, pas un modèle de quantité. Le nombre d'éléments dans chaque section (compétences, langues, expériences, formations) est indicatif. Tu dois reproduire le pattern HTML autant de fois que nécessaire pour inclure TOUS les éléments du CV fourni. Exemples : si le CV a 10 compétences, crée 10 balises. Si le CV a 4 langues, crée 4 entrées. Si le CV a 5 expériences, crée 5 blocs. Ne jamais limiter à ce que le squelette montre.
 7. Pour chaque expérience professionnelle, liste 3 à 4 tâches maximum.
 8. Pour les dates d'expériences, utilise le format : MM/AAAA - MM/AAAA ou MM/AAAA - Présent.
 
