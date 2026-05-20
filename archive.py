@@ -15,7 +15,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Iterable
 
-OWNER = "Hariss"
+OWNER = ""
 
 # ---- MongoDB ----------------------------------------------------------------
 _MONGO_URI: str | None = os.environ.get("MONGODB_URI")
@@ -159,7 +159,7 @@ def make_filename(
     ext: str = "pdf",
 ) -> str:
     when = when or datetime.now()
-    parts = [doc_type or "Document", OWNER]
+    parts = [p for p in [doc_type or "Document", OWNER] if p]
     company_slug = _slug(company)
     role_slug = _slug(role)
     if company_slug:

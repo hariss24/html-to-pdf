@@ -333,6 +333,9 @@ _CV_HTML_SKELETON = """\
       <div class="entry-list__company-row">
         <span class="entry-list__subtitle">Etablissement</span><span class="entry-list__location">Ville</span>
       </div>
+      <div class="entry-list__description">
+        <p>Description, specialites ou matieres principales.</p>
+      </div>
     </div>
   </section>
 
@@ -412,6 +415,8 @@ _SYSTEM_CV_IMPORT = (
     "2. Remplace uniquement le contenu textuel par les données réelles du CV.\n"
     "3. Blocs répétables — inclus TOUS les éléments du CV, sans en omettre aucun :\n"
     "   • entry-list__item : un bloc par expérience professionnelle, un bloc par diplôme\n"
+    "     → Pour chaque diplôme : inclus la description (matières, spécialités, programme) dans entry-list__description si présente dans le CV.\n"
+    "     → Pour chaque expérience : inclus TOUTES les réalisations/puces dans entry-list__description.\n"
     "   • plain-list__item : un <span> par compétence\n"
     "   • languages__item : un bloc par langue\n"
     "4. Si une section est absente du CV (pas de résumé, pas de langues…), omets la section entière.\n"
@@ -579,7 +584,12 @@ def api_pdf_to_html():
                 pix = doc[page_num].get_pixmap(dpi=150)
                 images.append(pix.tobytes("png"))
             n = len(images)
-            prompt = f"Voici le document en {n} page{'s' if n > 1 else ''}. Remplis le squelette avec toutes les informations visibles."
+            prompt = (
+                f"Voici le document en {n} page{'s' if n > 1 else ''}. "
+                "Remplis le squelette avec TOUTES les informations visibles. "
+                "N'omet AUCUN détail : descriptions de formations, spécialités, sous-matières, "
+                "réalisations des expériences, dates précises, coordonnées complètes."
+            )
             for chunk in ai_engine.stream_completion(prompt, system, images=images, api_key=user_key):
                 yield f"data: {_json_ai.dumps(chunk, ensure_ascii=False)}\n\n"
             yield "data: [DONE]\n\n"

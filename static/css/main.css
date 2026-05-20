@@ -170,6 +170,25 @@ select:focus, input[type=text]:focus, textarea:focus {
   box-shadow: var(--neu-raised-sm);
 }
 
+/* Import tab — CTA prominence */
+.tab.tab--import {
+  color: var(--orange);
+  font-weight: 700;
+  animation: tab-pulse 1.4s ease-out 0.6s 1 both;
+}
+.tab.tab--import:hover {
+  color: var(--orange-hover);
+}
+.tab.tab--import.active {
+  animation: none;
+}
+
+@keyframes tab-pulse {
+  0%   { box-shadow: none; }
+  40%  { box-shadow: 0 0 0 3px rgba(232, 93, 4, 0.25); }
+  100% { box-shadow: none; }
+}
+
 #editor { flex: 1; min-height: 0; }
 #preview { flex: 1; border: 0; background: white; }
 .splitter { width: 14px; cursor: col-resize; background: transparent; border-radius: 7px; transition: background 150ms; }

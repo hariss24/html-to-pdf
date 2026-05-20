@@ -350,7 +350,7 @@ function autoFilename() {
   const company = slug($('company').value);
   const role    = slug($('role').value);
   const tail    = company || role || '';
-  return tail ? `${docType}_Hariss_${tail}_${today}.pdf` : `${docType}_Hariss_${today}.pdf`;
+  return tail ? `${docType}_${tail}_${today}.pdf` : `${docType}_${today}.pdf`;
 }
 
 function refreshFilenamePreview() {
