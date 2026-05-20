@@ -86,18 +86,33 @@ async function _getAllHtmlFromIDB() {
 function buildRow(e) {
   const id         = e.id;
   const reloadHref = '/?load=' + encodeURIComponent(id);
-  const actions = [
-    el('a',      { class: 'btn',          href: reloadHref, text: 'Recharger' }),
-    el('button', { class: 'ghost danger', onclick: () => del(id), text: 'Supprimer' }),
-  ];
 
-  return el('tr', { 'data-id': id }, [
-    el('td', { text: fmtDate(e.created_at) }),
-    el('td', {}, [el('span', { class: 'badge', text: e.doc_type || '' })]),
-    el('td', { text: e.company || '-' }),
-    el('td', { title: e.job_desc || '', text: e.role || '-' }),
-    el('td', { class: 'filename', title: e.filename, text: e.filename || '' }),
-    el('td', { class: 'actions' }, actions),
+  const dateStr        = fmtDate(e.created_at);
+  const [day, time]    = dateStr.split(', ');
+  const docType        = e.doc_type || '';
+  const typeClass      = 'type-badge type-' + docType.toLowerCase();
+
+  return el('div', { class: 'history-card', 'data-id': id }, [
+    el('div', { class: 'card-date' }, [
+      el('div', { class: 'card-date-day',  text: day  || dateStr }),
+      el('div', { class: 'card-date-time', text: time || '' }),
+    ]),
+    el('div', { class: 'card-type' }, [
+      el('span', { class: typeClass, text: docType }),
+    ]),
+    el('div', { class: 'card-company' }, [
+      el('div', { class: 'card-label', text: 'Entreprise' }),
+      el('div', { class: 'card-val',   text: e.company || '-' }),
+    ]),
+    el('div', { class: 'card-role' }, [
+      el('div', { class: 'card-label', text: 'Poste' }),
+      el('div', { class: 'card-val', title: e.job_desc || '', text: e.role || '-' }),
+    ]),
+    el('div', { class: 'card-filename', title: e.filename || '', text: e.filename || '' }),
+    el('div', { class: 'card-actions' }, [
+      el('a',      { class: 'neu-btn-sm',        href: reloadHref, text: 'Recharger' }),
+      el('button', { class: 'neu-btn-sm danger', onclick: () => del(id), text: 'Supprimer' }),
+    ]),
   ]);
 }
 
@@ -118,16 +133,9 @@ function render(filter) {
     root.appendChild(el('div', { class: 'empty', text: 'Aucun document.' }));
     return;
   }
-  const head = el('thead', {}, [el('tr', {}, [
-    el('th', { text: 'Date' }),
-    el('th', { text: 'Type' }),
-    el('th', { text: 'Entreprise' }),
-    el('th', { text: 'Poste' }),
-    el('th', { text: 'Fichier' }),
-    el('th'),
-  ])]);
-  const body = el('tbody', {}, filtered.map(buildRow));
-  root.appendChild(el('table', {}, [head, body]));
+  const list = el('div', { class: 'card-list' });
+  filtered.forEach(e => list.appendChild(buildRow(e)));
+  root.appendChild(list);
 }
 
 function showError(msg) {
