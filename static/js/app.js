@@ -1214,6 +1214,18 @@ document.querySelectorAll('.import-tab').forEach(tab => {
 function markCvLoaded() { switchTab('html'); }
 
 // ============================================================
+// Import helpers
+// ============================================================
+function _applyImportCss(docType) {
+  if (!cssModel) return;
+  if (docType === 'Lettre') {
+    cssModel.setValue('');
+  } else {
+    cssModel.setValue(TEMPLATES.sobre.css);
+  }
+}
+
+// ============================================================
 // Import texte → HTML
 // ============================================================
 $('btn-text-to-html').addEventListener('click', async () => {
@@ -1226,15 +1238,16 @@ $('btn-text-to-html').addEventListener('click', async () => {
   status.textContent = 'Conversion en cours';
   status.className   = 'import-status status-busy';
 
+  const docType = ($('doc_type') && $('doc_type').value) || 'CV';
   try {
-    const css = cssModel ? cssModel.getValue() : '';
     const html = await streamToMonaco(
       '/api/text-to-html',
-      { text, css },
+      { text, doc_type: docType },
       getApiHeaders(),
       (partial) => { if (htmlModel) htmlModel.setValue(partial); }
     );
     if (htmlModel) htmlModel.setValue(html);
+    _applyImportCss(docType);
     markCvLoaded();
     showToast('CV converti en HTML avec succès.', 'ok');
     status.textContent = '';
@@ -1271,9 +1284,10 @@ $('btn-pdf-to-html').addEventListener('click', async () => {
   status.textContent = 'Lecture du PDF';
   status.className   = 'import-status status-busy';
 
+  const docType = ($('doc_type') && $('doc_type').value) || 'CV';
   const formData = new FormData();
   formData.append('file', _selectedPdfFile);
-  formData.append('css', cssModel ? cssModel.getValue() : '');
+  formData.append('doc_type', docType);
 
   try {
     const html = await streamFormToMonaco(
@@ -1287,6 +1301,7 @@ $('btn-pdf-to-html').addEventListener('click', async () => {
       }
     );
     if (htmlModel) htmlModel.setValue(html);
+    _applyImportCss(docType);
     markCvLoaded();
     showToast('PDF converti en HTML avec succès.', 'ok');
     status.textContent = '';

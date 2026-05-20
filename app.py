@@ -256,45 +256,149 @@ def api_history_delete(doc_id):
 # API IA
 # ---------------------------------------------------------------------------
 
-_SYSTEM_TEXT_TO_HTML_BASE = (
-    "Tu reçois le contenu texte brut d'un CV. "
-    "Retourne uniquement le HTML structuré correspondant : utilise des balises sémantiques "
-    "(h1, h2, h3, p, ul, li, strong). Ne génère pas de CSS. Ne génère pas de design. "
-    "Uniquement la structure HTML du contenu, fidèle au texte fourni."
+_CV_HTML_SKELETON = """\
+<div class="resume-template-1 resume-template-renderer">
+
+  <section class="resume-template-renderer-section personal-data">
+    <h2 class="resume-template-renderer-section__title">Informations personnelles</h2>
+    <div class="personal-data__photo" style="background:#eee;">
+      <!-- URL_DE_VOTRE_PHOTO_ICI -->
+    </div>
+    <div class="personal-data__title-row">
+      <span class="personal-data__name">Prenom Nom</span><span class="personal-data__desired-job-title">Titre du poste</span>
+    </div>
+    <div class="personal-data__contact-row">
+      Ville, Pays &middot; email@example.com &middot; +33 6 00 00 00 00 &middot; linkedin.com/in/profil
+    </div></section>
+
+  <section class="resume-template-renderer-section summary-objective">
+    <h2 class="resume-template-renderer-section__title summary-objective__title">A propos</h2>
+    <div class="summary-objective__content">
+      Bref resume professionnel.
+    </div>
+  </section>
+
+  <section class="resume-template-renderer-section entry-list">
+    <h2 class="resume-template-renderer-section__title">Experience</h2>
+    <div class="entry-list__item">
+      <span class="entry-list__title">Poste occupe</span>
+      <span class="entry-list__date">Jan 2024 - Present</span>
+      <div class="entry-list__company-row">
+        <span class="entry-list__subtitle">Entreprise</span><span class="entry-list__location">Ville</span>
+      </div>
+      <div class="entry-list__description">
+        <ul>
+          <li>Realisation.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="resume-template-renderer-section entry-list">
+    <h2 class="resume-template-renderer-section__title">Formation</h2>
+    <div class="entry-list__item">
+      <span class="entry-list__title">Diplome</span>
+      <span class="entry-list__date">2020 - 2022</span>
+      <div class="entry-list__company-row">
+        <span class="entry-list__subtitle">Etablissement</span><span class="entry-list__location">Ville</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="resume-template-renderer-section plain-list">
+    <h2 class="resume-template-renderer-section__title">Competences</h2>
+    <div class="plain-list__items">
+      <span class="plain-list__item">Competence 1</span>
+    </div>
+  </section>
+
+  <section class="resume-template-renderer-section languages">
+    <h2 class="resume-template-renderer-section__title">Langues</h2>
+    <div class="languages__items">
+      <div class="languages__item">
+        <span class="languages__name">Francais</span>
+        <span class="languages__description">Natif</span>
+      </div>
+    </div>
+  </section>
+
+</div>"""
+
+_LETTRE_SKELETON = """\
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Lettre de Motivation</title>
+  <style>
+    @page { size: A4; margin: 0; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "Helvetica", "Arial", sans-serif; font-size: 9.5pt; line-height: 1.6; color: #333; padding: 48px 58px 40px; }
+    .header { display: flex; justify-content: space-between; margin-bottom: 36px; }
+    .sender strong, .recipient strong { font-size: 10.5pt; color: #000; }
+    .sender p, .recipient p { margin-top: 2px; color: #555; font-size: 9pt; }
+    .recipient { text-align: right; }
+    .subject { font-weight: 600; font-size: 9.5pt; color: #000; margin-bottom: 24px; border-bottom: 2px solid #c9c6c1; padding-bottom: 8px; }
+    .salutation { margin-bottom: 16px; }
+    .body p { margin-bottom: 16px; text-align: justify; }
+    .closing { margin-top: 32px; }
+    .closing p { margin-bottom: 6px; }
+    .signature { margin-top: 24px; font-weight: 600; font-size: 10pt; color: #000; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="sender">
+      <strong>Prenom Nom</strong>
+      <p>Titre du poste</p>
+      <p>Ville, Pays</p>
+      <p>+33 6 00 00 00 00</p>
+      <p>email@example.com</p>
+    </div>
+    <div class="recipient">
+      <strong>A l'attention du responsable de recrutement</strong>
+      <p>Ville, le JJ mois AAAA</p>
+    </div>
+  </div>
+  <div class="subject">Objet : Candidature au poste de [Poste]</div>
+  <div class="salutation">Madame, Monsieur,</div>
+  <div class="body">
+    <p>Paragraphe d'introduction.</p>
+    <p>Paragraphe sur les competences et experiences.</p>
+    <p>Paragraphe de conclusion.</p>
+  </div>
+  <div class="closing">
+    <p>Je vous adresse mes sinceres salutations,</p>
+  </div>
+  <div class="signature">Prenom Nom</div>
+</body>
+</html>"""
+
+_SYSTEM_CV_IMPORT = (
+    "Tu reçois le contenu d'un CV (texte ou image). Remplis ce squelette HTML avec les données du CV fourni.\n\n"
+    "RÈGLES — RESPECTE-LES À LA LETTRE :\n"
+    "1. Conserve EXACTEMENT la structure HTML et toutes les classes CSS du squelette. Ne les modifie jamais.\n"
+    "2. Remplace uniquement le contenu textuel par les données réelles du CV.\n"
+    "3. Blocs répétables — inclus TOUS les éléments du CV, sans en omettre aucun :\n"
+    "   • entry-list__item : un bloc par expérience professionnelle, un bloc par diplôme\n"
+    "   • plain-list__item : un <span> par compétence\n"
+    "   • languages__item : un bloc par langue\n"
+    "4. Si une section est absente du CV (pas de résumé, pas de langues…), omets la section entière.\n"
+    "5. N'ajoute AUCUNE balise <style>, AUCUN attribut style inline (sauf style=\"background:#eee;\" déjà présent).\n"
+    "6. Laisse <!-- URL_DE_VOTRE_PHOTO_ICI --> exactement tel quel, sans le modifier.\n"
+    "7. Retourne UNIQUEMENT le HTML rempli, sans balise markdown, sans commentaire, sans explication.\n\n"
+    "Squelette à remplir :\n" + _CV_HTML_SKELETON
 )
 
-_SYSTEM_TEXT_TO_HTML_WITH_CSS = (
-    "Tu reçois le contenu texte brut d'un CV et une feuille de style CSS. "
-    "Retourne uniquement le HTML structuré correspondant en utilisant les classes CSS "
-    "présentes dans la feuille de style fournie pour chaque élément approprié. "
-    "N'ajoute aucune balise <style>, aucun attribut style inline, aucun CSS. "
-    "Uniquement la structure HTML avec les classes CSS adéquates, fidèle au texte fourni.\n\n"
-    "CSS de référence :\n{css}"
+_SYSTEM_LETTRE_IMPORT = (
+    "Tu reçois le contenu d'une lettre de motivation (texte ou image). Remplis ce squelette HTML.\n\n"
+    "RÈGLES — RESPECTE-LES À LA LETTRE :\n"
+    "1. Conserve EXACTEMENT la structure HTML, toutes les classes CSS, et la balise <style> du squelette.\n"
+    "2. Remplace uniquement le contenu textuel par les données réelles de la lettre.\n"
+    "3. Ne modifie PAS les styles CSS.\n"
+    "4. Retourne le document HTML COMPLET (DOCTYPE inclus), sans markdown, sans commentaire.\n\n"
+    "Squelette à remplir :\n" + _LETTRE_SKELETON
 )
-
-_SYSTEM_PDF_PAGE_BASE = (
-    "Voici une page d'un CV en image. "
-    "Retourne uniquement le HTML structuré du contenu visible : titres, paragraphes, listes, "
-    "dates, intitulés. Pas de CSS, pas de style inline, uniquement les balises HTML sémantiques. "
-    "Texte en français si c'est en français, anglais si c'est en anglais."
-)
-
-_SYSTEM_PDF_PAGE_WITH_CSS = (
-    "Voici une page d'un CV en image et une feuille de style CSS. "
-    "Retourne uniquement le HTML structuré du contenu visible en utilisant les classes CSS "
-    "présentes dans la feuille de style fournie pour chaque élément approprié. "
-    "Pas de balise <style>, pas de style inline. Uniquement les balises HTML avec les classes adéquates. "
-    "Texte en français si c'est en français, anglais si c'est en anglais.\n\n"
-    "CSS de référence :\n{css}"
-)
-
-
-def _build_import_system(base: str, with_css_template: str, css: str) -> str:
-    """Retourne le prompt système adapté selon que du CSS est fourni ou non."""
-    css = (css or "").strip()
-    if not css:
-        return base
-    return with_css_template.format(css=css)
 
 _TAILOR_SYSTEMS = {
     "peu": (
@@ -394,7 +498,7 @@ def api_status():
 def api_text_to_html():
     data     = request.get_json(force=True) or {}
     text     = (data.get("text") or "").strip()
-    css      = (data.get("css") or "").strip()
+    doc_type = (data.get("doc_type") or "CV").strip()
     if not text:
         return jsonify({"error": "Texte vide."}), 400
     user_key = (request.headers.get("X-Api-Key") or "").strip() or None
@@ -402,9 +506,7 @@ def api_text_to_html():
     if err:
         return err
 
-    system = _build_import_system(
-        _SYSTEM_TEXT_TO_HTML_BASE, _SYSTEM_TEXT_TO_HTML_WITH_CSS, css
-    )
+    system = _SYSTEM_LETTRE_IMPORT if doc_type == "Lettre" else _SYSTEM_CV_IMPORT
 
     def generate():
         try:
@@ -428,32 +530,27 @@ def api_pdf_to_html():
     if len(pdf_bytes) > MAX_PDF_BYTES:
         return jsonify({"error": "PDF trop volumineux (max 20 Mo)."}), 413
 
-    css      = (request.form.get("css") or "").strip()
+    doc_type = (request.form.get("doc_type") or "CV").strip()
     user_key = (request.headers.get("X-Api-Key") or "").strip() or None
     err = _check_quota(user_key)
     if err:
         return err
 
-    system = _build_import_system(
-        _SYSTEM_PDF_PAGE_BASE, _SYSTEM_PDF_PAGE_WITH_CSS, css
-    )
+    system = _SYSTEM_LETTRE_IMPORT if doc_type == "Lettre" else _SYSTEM_CV_IMPORT
 
     def generate():
         import fitz
         doc = None
         try:
             doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+            images = []
             for page_num in range(len(doc)):
-                page = doc[page_num]
-                pix  = page.get_pixmap(dpi=150)
-                img_bytes = pix.tobytes("png")
-                for chunk in ai_engine.stream_completion(
-                    f"Page {page_num + 1} du CV :",
-                    system,
-                    images=[img_bytes],
-                    api_key=user_key,
-                ):
-                    yield f"data: {_json_ai.dumps(chunk, ensure_ascii=False)}\n\n"
+                pix = doc[page_num].get_pixmap(dpi=150)
+                images.append(pix.tobytes("png"))
+            n = len(images)
+            prompt = f"Voici le document en {n} page{'s' if n > 1 else ''}. Remplis le squelette avec toutes les informations visibles."
+            for chunk in ai_engine.stream_completion(prompt, system, images=images, api_key=user_key):
+                yield f"data: {_json_ai.dumps(chunk, ensure_ascii=False)}\n\n"
             yield "data: [DONE]\n\n"
         except Exception as exc:
             yield f"data: [ERROR] {exc}\n\n"
