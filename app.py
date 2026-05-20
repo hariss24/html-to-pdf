@@ -420,9 +420,12 @@ _SYSTEM_CV_IMPORT = (
     "   • plain-list__item : un <span> par compétence\n"
     "   • languages__item : un bloc par langue\n"
     "4. Si une section est absente du CV (pas de résumé, pas de langues…), omets la section entière.\n"
-    "5. N'ajoute AUCUNE balise <style>, AUCUN attribut style inline (sauf style=\"background:#eee;\" déjà présent).\n"
-    "6. Laisse <!-- URL_DE_VOTRE_PHOTO_ICI --> exactement tel quel, sans le modifier.\n"
-    "7. Retourne UNIQUEMENT le HTML rempli, sans balise markdown, sans commentaire, sans explication.\n\n"
+    "5. Sous-éléments optionnels — si un sous-élément du squelette (entry-list__description, entry-list__company-row…)\n"
+    "   n'a pas de contenu correspondant dans le CV, supprime entièrement cette balise.\n"
+    "   Ne laisse jamais de balise vide ni de texte placeholder.\n"
+    "6. N'ajoute AUCUNE balise <style>, AUCUN attribut style inline (sauf style=\"background:#eee;\" déjà présent).\n"
+    "7. Laisse <!-- URL_DE_VOTRE_PHOTO_ICI --> exactement tel quel, sans le modifier.\n"
+    "8. Retourne UNIQUEMENT le HTML rempli, sans balise markdown, sans commentaire, sans explication.\n\n"
     "Squelette à remplir :\n" + _CV_HTML_SKELETON
 )
 
