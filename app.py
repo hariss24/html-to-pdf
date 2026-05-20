@@ -256,19 +256,45 @@ def api_history_delete(doc_id):
 # API IA
 # ---------------------------------------------------------------------------
 
-_SYSTEM_TEXT_TO_HTML = (
+_SYSTEM_TEXT_TO_HTML_BASE = (
     "Tu reçois le contenu texte brut d'un CV. "
     "Retourne uniquement le HTML structuré correspondant : utilise des balises sémantiques "
     "(h1, h2, h3, p, ul, li, strong). Ne génère pas de CSS. Ne génère pas de design. "
     "Uniquement la structure HTML du contenu, fidèle au texte fourni."
 )
 
-_SYSTEM_PDF_PAGE = (
+_SYSTEM_TEXT_TO_HTML_WITH_CSS = (
+    "Tu reçois le contenu texte brut d'un CV et une feuille de style CSS. "
+    "Retourne uniquement le HTML structuré correspondant en utilisant les classes CSS "
+    "présentes dans la feuille de style fournie pour chaque élément approprié. "
+    "N'ajoute aucune balise <style>, aucun attribut style inline, aucun CSS. "
+    "Uniquement la structure HTML avec les classes CSS adéquates, fidèle au texte fourni.\n\n"
+    "CSS de référence :\n{css}"
+)
+
+_SYSTEM_PDF_PAGE_BASE = (
     "Voici une page d'un CV en image. "
     "Retourne uniquement le HTML structuré du contenu visible : titres, paragraphes, listes, "
     "dates, intitulés. Pas de CSS, pas de style inline, uniquement les balises HTML sémantiques. "
     "Texte en français si c'est en français, anglais si c'est en anglais."
 )
+
+_SYSTEM_PDF_PAGE_WITH_CSS = (
+    "Voici une page d'un CV en image et une feuille de style CSS. "
+    "Retourne uniquement le HTML structuré du contenu visible en utilisant les classes CSS "
+    "présentes dans la feuille de style fournie pour chaque élément approprié. "
+    "Pas de balise <style>, pas de style inline. Uniquement les balises HTML avec les classes adéquates. "
+    "Texte en français si c'est en français, anglais si c'est en anglais.\n\n"
+    "CSS de référence :\n{css}"
+)
+
+
+def _build_import_system(base: str, with_css_template: str, css: str) -> str:
+    """Retourne le prompt système adapté selon que du CSS est fourni ou non."""
+    css = (css or "").strip()
+    if not css:
+        return base
+    return with_css_template.format(css=css)
 
 _TAILOR_SYSTEMS = {
     "peu": (
@@ -368,6 +394,7 @@ def api_status():
 def api_text_to_html():
     data     = request.get_json(force=True) or {}
     text     = (data.get("text") or "").strip()
+    css      = (data.get("css") or "").strip()
     if not text:
         return jsonify({"error": "Texte vide."}), 400
     user_key = (request.headers.get("X-Api-Key") or "").strip() or None
@@ -375,9 +402,13 @@ def api_text_to_html():
     if err:
         return err
 
+    system = _build_import_system(
+        _SYSTEM_TEXT_TO_HTML_BASE, _SYSTEM_TEXT_TO_HTML_WITH_CSS, css
+    )
+
     def generate():
         try:
-            for chunk in ai_engine.stream_completion(text, _SYSTEM_TEXT_TO_HTML, api_key=user_key):
+            for chunk in ai_engine.stream_completion(text, system, api_key=user_key):
                 yield f"data: {_json_ai.dumps(chunk, ensure_ascii=False)}\n\n"
             yield "data: [DONE]\n\n"
         except Exception as exc:
@@ -397,10 +428,15 @@ def api_pdf_to_html():
     if len(pdf_bytes) > MAX_PDF_BYTES:
         return jsonify({"error": "PDF trop volumineux (max 20 Mo)."}), 413
 
+    css      = (request.form.get("css") or "").strip()
     user_key = (request.headers.get("X-Api-Key") or "").strip() or None
     err = _check_quota(user_key)
     if err:
         return err
+
+    system = _build_import_system(
+        _SYSTEM_PDF_PAGE_BASE, _SYSTEM_PDF_PAGE_WITH_CSS, css
+    )
 
     def generate():
         import fitz
@@ -413,7 +449,7 @@ def api_pdf_to_html():
                 img_bytes = pix.tobytes("png")
                 for chunk in ai_engine.stream_completion(
                     f"Page {page_num + 1} du CV :",
-                    _SYSTEM_PDF_PAGE,
+                    system,
                     images=[img_bytes],
                     api_key=user_key,
                 ):

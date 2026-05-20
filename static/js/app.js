@@ -1227,9 +1227,10 @@ $('btn-text-to-html').addEventListener('click', async () => {
   status.className   = 'import-status status-busy';
 
   try {
+    const css = cssModel ? cssModel.getValue() : '';
     const html = await streamToMonaco(
       '/api/text-to-html',
-      { text },
+      { text, css },
       getApiHeaders(),
       (partial) => { if (htmlModel) htmlModel.setValue(partial); }
     );
@@ -1272,6 +1273,7 @@ $('btn-pdf-to-html').addEventListener('click', async () => {
 
   const formData = new FormData();
   formData.append('file', _selectedPdfFile);
+  formData.append('css', cssModel ? cssModel.getValue() : '');
 
   try {
     const html = await streamFormToMonaco(
