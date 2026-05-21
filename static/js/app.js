@@ -1105,18 +1105,23 @@ function _appendProposals(proposals) {
 async function _sendChat() {
   var text = chatInput.value.trim();
   if (!text) return;
+  if (!htmlModel) { _appendMsg('assistant', "L'éditeur n'est pas prêt, patientez."); return; }
   chatInput.value = '';
   chatInput.disabled = true;
   $('chat-send-btn').disabled = true;
 
   _appendMsg('user', text);
   _chatHistory.push({ role: 'user', content: text });
-  var loading = _appendMsg('assistant', '…');
+  var loading = _appendMsg('assistant', 'L’IA génère une proposition');
   loading.classList.add('chat-loading');
+
+  var controller = new AbortController();
+  var timeoutId  = setTimeout(function() { controller.abort(); }, 120000);
 
   try {
     var resp = await fetch('/api/editor-chat', {
       method: 'POST',
+      signal: controller.signal,
       headers: Object.assign({ 'Content-Type': 'application/json' }, getApiHeaders()),
       body: JSON.stringify({
         messages:   _chatHistory,
@@ -1127,6 +1132,7 @@ async function _sendChat() {
         active_tab: activeTab || 'html',
       }),
     });
+    clearTimeout(timeoutId);
     loading.remove();
     var data = await resp.json();
     if (!resp.ok) {
@@ -1138,8 +1144,12 @@ async function _sendChat() {
     _chatHistory.push({ role: 'assistant', content: data.reply });
     if (data.proposals && data.proposals.length) _appendProposals(data.proposals);
   } catch (e) {
+    clearTimeout(timeoutId);
     loading.remove();
-    _appendMsg('assistant', 'Erreur réseau : ' + e.message);
+    var msg = e.name === 'AbortError'
+      ? 'Délai dépassé (> 2 min). L’IA n’a pas répondu. Réessayez.'
+      : 'Erreur : ' + e.message;
+    _appendMsg('assistant', msg);
     _chatHistory.pop();
   } finally {
     chatInput.disabled = false;

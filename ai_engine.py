@@ -150,7 +150,7 @@ def _complete_gemini(messages: list[dict], system: str, api_key: str) -> str:
     from google import genai
     from google.genai import types
 
-    client = genai.Client(api_key=api_key)
+    client = genai.Client(api_key=api_key, http_options=types.HttpOptions(timeout=90))
 
     contents = []
     for msg in messages:

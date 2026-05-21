@@ -42,7 +42,9 @@
   color:var(--text);max-width:92%;border-radius:2px 14px 14px 14px;
   padding:8px 12px;font-size:13px;line-height:1.4;box-shadow:var(--neu-inset);
 }
-.chat-loading .chat-bubble{opacity:.5;}
+.chat-loading .chat-bubble{opacity:.7;}
+.chat-loading .chat-bubble::after{content:'';display:inline-block;width:12px;animation:chat-dots 1.2s steps(4,end) infinite;}
+@keyframes chat-dots{0%{content:'';}25%{content:'.';}50%{content:'..';}75%{content:'...';}100%{content:'...'}}
 .chat-proposal{border-radius:12px;padding:12px;font-size:13px;box-shadow:var(--neu-raised-sm);}
 .proposal-title{display:block;font-weight:600;font-size:13px;color:var(--text);margin-bottom:4px;}
 .proposal-summary{display:block;font-size:12px;color:var(--muted);line-height:1.4;margin-bottom:10px;}
